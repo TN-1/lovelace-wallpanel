@@ -504,14 +504,22 @@ function getBirdnetCandidateFilenames(sciName, commonName, vettedFile = "") {
 	}
 	if (commonName) {
 		const trimmed = commonName.trim();
-		// PascalCase without spaces: "Little Raven" -> "LittleRaven", "Magpie-lark" -> "Magpie-lark"
+		// PascalCase without spaces or hyphens: "Little Raven" -> "LittleRaven", "Willie-wagtail" -> "WillieWagtail"
+		const pascal = trimmed.replace(/(?:^|[\s_-])+(\w)/g, (_, c) => c.toUpperCase());
+		names.add(pascal);
+
+		// TitleCase with hyphens preserved: "Willie-wagtail" -> "Willie-Wagtail", "Magpie-lark" -> "Magpie-Lark"
+		const titleHyphen = trimmed
+			.replace(/(?:^|[\s_])+(\w)/g, (_, c) => c.toUpperCase())
+			.replace(/-(\w)/g, (_, c) => `-${c.toUpperCase()}`);
+		names.add(titleHyphen);
+
 		const noSpaces = trimmed.replace(/\s+/g, "");
 		names.add(noSpaces);
 		if (noSpaces.includes("-")) {
 			names.add(noSpaces.replace(/-/g, ""));
 		}
-		const pascal = trimmed.replace(/(?:^|[\s_])+(\w)/g, (_, c) => c.toUpperCase());
-		names.add(pascal);
+
 		names.add(trimmed.toLowerCase().replace(/[\s_]+/g, "-"));
 		names.add(trimmed.toLowerCase().replace(/[\s-]+/g, "_"));
 	}
@@ -4961,7 +4969,9 @@ function initWallpanel() {
 				}
 			}
 
-			const vetted = this.vettedPlates && this.vettedPlates[sciName];
+			const vetted =
+				this.vettedPlates &&
+				(this.vettedPlates[sciName] || (commonName && this.vettedPlates[commonName]));
 
 			// If explicitly loaded from custom plates.json URL, honor vetted.image/file directly
 			if (this.loadedPlatesUrl && vetted) {
@@ -5001,12 +5011,12 @@ function initWallpanel() {
 						? [...config.birdnet_local_path]
 						: [config.birdnet_local_path];
 				} else {
-					this.birdnetLocalPaths = ["/media/local/birds/", "/local/birds/"];
+					this.birdnetLocalPaths = ["/local/birds/", "/media/local/birds/"];
 				}
 				this.birdnetLocalPaths = this.birdnetLocalPaths.map((p) => (p.endsWith("/") ? p : `${p}/`));
 			}
 
-			if (this.localBirdProbingFailedCount < 4) {
+			if (this.localBirdProbingFailedCount < 50) {
 				const candidateFilenames = getBirdnetCandidateFilenames(sciName, commonName, vetted?.file);
 
 				for (const basePath of this.birdnetLocalPaths) {
