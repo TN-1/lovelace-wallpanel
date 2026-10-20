@@ -121,11 +121,18 @@ const defaultConfig = {
 	birdnet_plates_url: "",
 	birdnet_layout: "folio",
 	birdnet_theme: "sage",
+	birdnet_mat_color: "",
+	birdnet_blend_mode: "auto",
 	birdnet_label: "BACKYARD",
 	birdnet_min_confidence: 50,
 	birdnet_update_interval: 300,
 	birdnet_order: "recent",
 	birdnet_card_offset: "auto",
+	birdnet_spread_cards: "auto",
+	birdnet_main_text: "",
+	birdnet_sub_text: "",
+	birdnet_cluster_main: "",
+	birdnet_cluster_sub: "",
 	content_interaction: false,
 	profile: "",
 	profile_entity: "",
@@ -312,19 +319,19 @@ function formatOrdinalWords(n) {
 }
 
 function getOvalSlots(n, isPortrait = false) {
-	function at(cx, cy, w, h) {
+	function at(cx, cy, w, h, scale = 1.0) {
 		const x = Math.min(Math.max(cx - w / 2, 0.0), 1 - w);
 		const y = Math.min(Math.max(cy - h / 2, 0.0), 1 - h);
-		return { x, y, w, h, cx, cy };
+		return { x, y, w, h, cx, cy, scale };
 	}
 
 	if (n <= 1) {
-		return [at(0.5, 0.44, 0.60, 0.65)];
+		return [at(0.5, 0.44, 0.60, 0.65, 1.0)];
 	}
 	if (n === 2) {
 		const w = isPortrait ? 0.40 : 0.30;
 		const h = isPortrait ? 0.34 : 0.30;
-		return [at(0.5, 0.28, w * 1.10, h * 1.10), at(0.5, 0.60, w * 0.85, h * 0.85)];
+		return [at(0.5, 0.28, w, h, 1.08), at(0.5, 0.60, w, h, 0.88)];
 	}
 	if (n === 3) {
 		const ring = 3;
@@ -335,32 +342,39 @@ function getOvalSlots(n, isPortrait = false) {
 		const slots = [];
 		for (let i = 0; i < ring; i++) {
 			const a = (-90 + (360 * i) / ring) * (Math.PI / 180);
-			const scale = 1.15 - 0.20 * i; // Rank 0: 1.15x, Rank 1: 0.95x, Rank 2: 0.75x
-			slots.push(at(0.5 + rx * Math.cos(a), 0.44 + ry * Math.sin(a), w * scale, h * scale));
+			const scale = Number((1.08 - 0.10 * i).toFixed(3));
+			slots.push(at(0.5 + rx * Math.cos(a), 0.44 + ry * Math.sin(a), w, h, scale));
 		}
 		return slots;
 	}
 
-	// n >= 4: Busiest hero bird in center (#1) + surrounding ring specimens (#2 to #N)
+	// n >= 4: Center hero bird (#1) + Bilaterally balanced surrounding ring specimens (#2 to #N)
 	const ring = n - 1;
-	const rx = isPortrait ? 0.33 : 0.35;
-	const ry = isPortrait ? 0.35 : 0.32;
-	const cyCenter = 0.44;
-	const heroW = 0.34;
-	const heroH = 0.36;
-	const slotW = 0.19;
-	const slotH = 0.19;
+	const rx = isPortrait ? 0.35 : 0.39;
+	const ry = isPortrait ? 0.385 : 0.37;
+	const cyCenter = isPortrait ? 0.465 : 0.46;
+	const heroW = isPortrait ? 0.42 : 0.40;
+	const heroH = isPortrait ? 0.44 : 0.42;
+	const slotW = isPortrait ? 0.24 : 0.23;
+	const slotH = isPortrait ? 0.24 : 0.23;
 
-	const centre = [at(0.5, cyCenter, heroW, heroH)];
+	const centre = [at(0.5, cyCenter, heroW, heroH, 1.0)];
 	const slots = [];
-	for (let i = 0; i < ring; i++) {
-		const a = (-90 + (360 * i) / ring) * (Math.PI / 180);
-		// Subtle scaling effect by detection dominance:
-		// Ring rank 0 (#2 overall) is 1.15x, scaling down to 0.75x for the least detected
-		const scale = ring > 1 ? 1.15 - 0.40 * (i / (ring - 1)) : 1.0;
+	for (let k = 0; k < ring; k++) {
+		let aDeg;
+		if (k === 0) {
+			aDeg = -90; // Top apex (#2 overall)
+		} else {
+			const step = Math.ceil(k / 2);
+			const delta = (360 / ring) * step;
+			aDeg = k % 2 === 1 ? -90 + delta : -90 - delta;
+		}
+		const a = aDeg * (Math.PI / 180);
+		// Dramatic bilateral scale: apex 1.15 down to 0.75 for base specimens
+		const scale = ring > 1 ? Number((1.15 - 0.40 * (k / (ring - 1))).toFixed(3)) : 1.0;
 		const w = slotW * scale;
 		const h = slotH * scale;
-		slots.push(at(0.5 + rx * Math.cos(a), cyCenter + ry * Math.sin(a), w, h));
+		slots.push(at(0.5 + rx * Math.cos(a), cyCenter + ry * Math.sin(a), w, h, scale));
 	}
 	return centre.concat(slots);
 }
@@ -443,7 +457,7 @@ function getBirdnetCandidateFilenames(sciName, commonName, vettedFile = "") {
 		names.add(trimmedSci.toLowerCase().replace(/\s+/g, "_"));
 	}
 
-	const extensions = [".jpeg", ".jpg", ".png", ".webp"];
+	const extensions = [".png", ".webp", ".jpeg", ".jpg"];
 	const results = [];
 	for (const name of names) {
 		if (!name) continue;
@@ -554,7 +568,7 @@ function getBirdnetCss() {
 			--wp-birdnet-sc: 'IM Fell English SC', 'Playfair Display', Georgia, serif;
 			--wp-birdnet-serif: 'IM Fell English', 'Playfair Display', Georgia, serif;
 			--wp-birdnet-mat: #ebe6da;
-			--wp-birdnet-plate: #7f908f;
+			--wp-birdnet-plate: #82918a;
 			--wp-birdnet-ink: #1c2626;
 			--wp-birdnet-ink-muted: #384948;
 			--wp-birdnet-border: #1c2626;
@@ -573,6 +587,27 @@ function getBirdnetCss() {
 			--wp-birdnet-ink-muted: #95a7a5;
 			--wp-birdnet-border: #465554;
 		}
+		.wallpanel-birdnet-container.theme-forest {
+			--wp-birdnet-mat: #e2e5db;
+			--wp-birdnet-plate: #596752;
+			--wp-birdnet-ink: #162014;
+			--wp-birdnet-ink-muted: #33402e;
+			--wp-birdnet-border: #162014;
+		}
+		.wallpanel-birdnet-container.theme-slate {
+			--wp-birdnet-mat: #dce2e3;
+			--wp-birdnet-plate: #586d77;
+			--wp-birdnet-ink: #141e24;
+			--wp-birdnet-ink-muted: #2f3f47;
+			--wp-birdnet-border: #141e24;
+		}
+		.wallpanel-birdnet-container.theme-ivory {
+			--wp-birdnet-mat: #f0ece3;
+			--wp-birdnet-plate: #faf8f5;
+			--wp-birdnet-ink: #1c1a17;
+			--wp-birdnet-ink-muted: #4a453e;
+			--wp-birdnet-border: #2b2722;
+		}
 		.wp-birdnet-mat {
 			width: 100%;
 			height: 100%;
@@ -583,6 +618,14 @@ function getBirdnetCss() {
 			justify-content: center;
 			padding: clamp(12px, 3.5vmin, 48px);
 			overflow: hidden;
+		}
+		.wp-birdnet-mat.offset-left {
+			justify-content: flex-start;
+			padding-left: clamp(24px, 5vw, 90px);
+		}
+		.wp-birdnet-mat.offset-right {
+			justify-content: flex-end;
+			padding-right: clamp(24px, 5vw, 90px);
 		}
 		.wp-birdnet-plate-card {
 			background-color: var(--wp-birdnet-plate);
@@ -600,6 +643,12 @@ function getBirdnetCss() {
 			aspect-ratio: 0.68;
 			height: 100%;
 			max-width: 90vw;
+		}
+		.wp-birdnet-folio-card.offset-left {
+			margin: 0 auto 0 0;
+		}
+		.wp-birdnet-folio-card.offset-right {
+			margin: 0 0 0 auto;
 		}
 		.wp-birdnet-inner-border {
 			border: 0.75px solid var(--wp-birdnet-border);
@@ -635,8 +684,8 @@ function getBirdnetCss() {
 			max-width: 100%;
 			max-height: 100%;
 			object-fit: contain;
-			mix-blend-mode: multiply;
-			filter: contrast(1.06) brightness(1.02) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.12));
+			mix-blend-mode: var(--wp-birdnet-blend-mode, multiply);
+			filter: var(--wp-birdnet-blend-filter, contrast(1.06) brightness(1.04));
 		}
 		.wp-birdnet-artwork-crop-container {
 			position: relative;
@@ -716,8 +765,8 @@ function getBirdnetCss() {
 			margin: 0 auto;
 			width: 100%;
 			height: 100%;
-			max-width: min(100%, calc((100vh - 40px) * 1.25));
-			aspect-ratio: 1.25;
+			max-width: min(100%, calc((100vh - 40px) * 1.35));
+			aspect-ratio: 1.35;
 			display: flex;
 			flex-direction: column;
 			background-color: var(--wp-birdnet-plate);
@@ -771,7 +820,8 @@ function getBirdnetCss() {
 			max-width: 100%;
 			max-height: 100%;
 			object-fit: contain;
-			mix-blend-mode: multiply;
+			mix-blend-mode: var(--wp-birdnet-blend-mode, normal);
+			filter: var(--wp-birdnet-blend-filter, none);
 		}
 		.wp-birdnet-cluster-label {
 			position: absolute;
@@ -856,6 +906,54 @@ function getBirdnetCss() {
 			position: relative;
 			overflow: hidden;
 		}
+		.wp-birdnet-spread-pane-cluster {
+			flex: 1.15 !important;
+		}
+		.wp-birdnet-spread-pane-cluster .wp-birdnet-cluster-sheet {
+			aspect-ratio: auto !important;
+			max-width: 100% !important;
+			height: 100% !important;
+			margin: 0 !important;
+		}
+		.wp-birdnet-spread-pane-cluster .wp-birdnet-cluster-inner {
+			border: none;
+			padding: clamp(6px, 1.2vmin, 16px);
+			height: 100%;
+			width: 100%;
+			box-sizing: border-box;
+		}
+		.wp-birdnet-spread-pane-folio {
+			flex: 0.85 !important;
+		}
+		.wp-birdnet-spread-compact .wp-birdnet-spread-pane-folio {
+			justify-content: flex-end;
+			align-items: center;
+			padding: clamp(10px, 1.5vmin, 24px);
+		}
+		.wp-birdnet-spread-compact.valign-top .wp-birdnet-spread-pane-folio {
+			justify-content: flex-start;
+		}
+		.wp-birdnet-spread-compact .wp-birdnet-spread-pane-folio .wp-birdnet-mat {
+			height: calc(100% * var(--wp-spread-folio-scale, 0.70)) !important;
+			max-height: calc(100% * var(--wp-spread-folio-scale, 0.70)) !important;
+			width: 100% !important;
+			max-width: 100% !important;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			padding: clamp(4px, 0.8vmin, 10px) !important;
+			box-sizing: border-box;
+		}
+		.wp-birdnet-spread-compact .wp-birdnet-spread-pane-folio .wp-birdnet-folio-card {
+			height: 100% !important;
+			max-height: 100% !important;
+			width: auto !important;
+			aspect-ratio: 0.72 !important;
+			border: 1px solid var(--wp-birdnet-border) !important;
+			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+			background-color: var(--wp-birdnet-plate) !important;
+			box-sizing: border-box;
+		}
 		.wp-birdnet-spread .wp-birdnet-mat {
 			padding: clamp(6px, 1.2vmin, 16px);
 			background: transparent;
@@ -919,6 +1017,26 @@ function getBirdnetCss() {
 			letter-spacing: 1.2px;
 			padding-left: 8px !important;
 			white-space: nowrap;
+		}
+		.wp-birdnet-chart-species-cell {
+			display: flex;
+			align-items: center;
+			gap: clamp(6px, 1vmin, 12px);
+		}
+		.wp-birdnet-chart-thumb-wrap {
+			width: clamp(26px, 3.8vmin, 44px);
+			height: clamp(26px, 3.8vmin, 44px);
+			flex-shrink: 0;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+		.wp-birdnet-chart-thumb {
+			max-width: 100%;
+			max-height: 100%;
+			object-fit: contain;
+			mix-blend-mode: var(--wp-birdnet-blend-mode, multiply);
+			filter: var(--wp-birdnet-blend-filter, contrast(1.06) brightness(1.04));
 		}
 		.wp-birdnet-chart-cell-busy {
 			background-color: rgba(28, 38, 38, 0.28);
@@ -2535,6 +2653,7 @@ function initWallpanel() {
 			this.infoContainer.style.transition = "opacity 2000ms ease-in-out";
 			this.infoContainer.style.padding = "25px";
 			this.infoContainer.style.boxSizing = "border-box";
+			this.infoContainer.style.zIndex = "10";
 
 			this.infoBox.removeAttribute("style");
 			this.infoBox.style.pointerEvents = "none";
@@ -4559,11 +4678,29 @@ function initWallpanel() {
 				const topSp = speciesList[0] || { sci: "Trichoglossus moluccanus" };
 				mediaUrls = [`birdnet://folio/${encodeURIComponent(topSp.sci)}?idx=0`];
 			} else if (layout === "auto") {
-				mediaUrls = [
-					...speciesList.map((sp, idx) => `birdnet://folio/${encodeURIComponent(sp.sci)}?idx=${idx}`),
-					"birdnet://cluster",
-					"birdnet://chart"
-				];
+				const isLong = this.isLongCardBox();
+				// When cards occupy an extended column, two-sided spread is omitted in favor of single-side offset templates
+				const candidateLayouts = isLong
+					? ["folio", "plate", "cluster"]
+					: ["folio", "spread", "cluster", "chart", "plate"];
+
+				mediaUrls = [];
+				speciesList.forEach((sp, idx) => {
+					const chosen = candidateLayouts[idx % candidateLayouts.length];
+					if (chosen === "cluster") {
+						mediaUrls.push("birdnet://cluster");
+					} else if (chosen === "chart") {
+						mediaUrls.push("birdnet://chart");
+					} else {
+						mediaUrls.push(`birdnet://${chosen}/${encodeURIComponent(sp.sci)}?idx=${idx}`);
+					}
+				});
+				if (!mediaUrls.some(u => u.includes("cluster"))) {
+					mediaUrls.push("birdnet://cluster");
+				}
+				if (order === "random") {
+					mediaUrls = shuffleArray(mediaUrls);
+				}
 			} else {
 				// "folio" or "plate"
 				mediaUrls = speciesList.map((sp, idx) => `birdnet://${layout}/${encodeURIComponent(sp.sci)}?idx=${idx}`);
@@ -4886,6 +5023,22 @@ function initWallpanel() {
 			const box = species.box || entry.box;
 			const altName = escapeHtml(species.name || "");
 
+			const blendSetting = (config.birdnet_blend_mode || "auto").toString().toLowerCase().trim();
+			let blendMode = "multiply";
+			let blendFilter = "contrast(1.06) brightness(1.04)";
+
+			const isTransparent = imgUrl.toLowerCase().includes(".png") ||
+				imgUrl.toLowerCase().includes(".webp") ||
+				imgUrl.toLowerCase().includes("transparent");
+
+			if (blendSetting === "normal") {
+				blendMode = "normal";
+				blendFilter = "none";
+			} else if (blendSetting === "auto" && isTransparent) {
+				blendMode = "normal";
+				blendFilter = "none";
+			}
+
 			if (box && Array.isArray(box) && box.length === 4) {
 				const [x0, y0, x1, y1] = box;
 				const boxW = Math.max(0.01, x1 - x0);
@@ -4897,52 +5050,139 @@ function initWallpanel() {
 
 				return `
 					<div class="${className}-crop-container" style="position: relative; overflow: hidden; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; ${style}">
-						<img src="${imgUrl}" alt="${altName}" class="${className}" style="position: absolute; width: ${imgWidthPercent}%; height: ${imgHeightPercent}%; left: ${imgLeftPercent}%; top: ${imgTopPercent}%; object-fit: fill; mix-blend-mode: multiply; pointer-events: none;">
+						<img src="${imgUrl}" alt="${altName}" class="${className}" style="position: absolute; width: ${imgWidthPercent}%; height: ${imgHeightPercent}%; left: ${imgLeftPercent}%; top: ${imgTopPercent}%; object-fit: fill; mix-blend-mode: ${blendMode}; filter: ${blendFilter}; pointer-events: none;">
 					</div>
 				`;
 			}
 			return `
-				<img src="${imgUrl}" alt="${altName}" class="${className}" style="max-width: 100%; max-height: 100%; object-fit: contain; mix-blend-mode: multiply; pointer-events: none; ${style}">
+				<img src="${imgUrl}" alt="${altName}" class="${className}" style="max-width: 100%; max-height: 100%; object-fit: contain; mix-blend-mode: ${blendMode}; filter: ${blendFilter}; pointer-events: none; ${style}">
 			`;
 		}
 
 		renderBirdnetLayout(layout, species, allSpecies, idx = 0) {
-			const theme = config.birdnet_theme || "sage";
-			const themeClass = `theme-${theme}`;
+			const theme = (config.birdnet_theme || "sage").trim();
+			const isCustomColor = theme.startsWith("#") || theme.startsWith("rgb") || theme.startsWith("hsl");
+			const themeClass = isCustomColor ? "" : `theme-${theme}`;
+			const matSetting = (config.birdnet_mat_color || config.birdnet_mat || "").toString().trim();
+
+			const styles = [];
+			if (isCustomColor) {
+				styles.push(`--wp-birdnet-plate: ${theme};`);
+			}
+			if (matSetting) {
+				if (matSetting.toLowerCase() === "same" || matSetting.toLowerCase() === "match") {
+					styles.push(`--wp-birdnet-mat: var(--wp-birdnet-plate);`);
+				} else if (matSetting.toLowerCase() === "dark") {
+					styles.push(`--wp-birdnet-mat: #141718;`);
+				} else if (matSetting.toLowerCase() === "parchment") {
+					styles.push(`--wp-birdnet-mat: #e8e2d2;`);
+				} else if (matSetting.toLowerCase() === "sage") {
+					styles.push(`--wp-birdnet-mat: #ebe6da;`);
+				} else if (matSetting.toLowerCase() === "forest") {
+					styles.push(`--wp-birdnet-mat: #e2e5db;`);
+				} else if (matSetting.toLowerCase() === "slate") {
+					styles.push(`--wp-birdnet-mat: #dce2e3;`);
+				} else if (matSetting.toLowerCase() === "ivory") {
+					styles.push(`--wp-birdnet-mat: #f0ece3;`);
+				} else {
+					styles.push(`--wp-birdnet-mat: ${matSetting};`);
+				}
+			}
+			const blendSetting = (config.birdnet_blend_mode || "auto").toString().toLowerCase().trim();
+			if (blendSetting === "normal") {
+				styles.push(`--wp-birdnet-blend-mode: normal;`);
+				styles.push(`--wp-birdnet-blend-filter: none;`);
+			}
+			const themeStyle = styles.length > 0 ? `style="${styles.join(" ")}"` : "";
 
 			if (layout === "cluster") {
-				return `<div class="wallpanel-birdnet-container ${themeClass}">${this.renderBirdnetCluster(allSpecies)}</div>`;
+				return `<div class="wallpanel-birdnet-container ${themeClass}" ${themeStyle}>${this.renderBirdnetCluster(allSpecies)}</div>`;
 			}
 			if (layout === "chart") {
-				return `<div class="wallpanel-birdnet-container ${themeClass}">${this.renderBirdnetChart(allSpecies)}</div>`;
+				return `<div class="wallpanel-birdnet-container ${themeClass}" ${themeStyle}>${this.renderBirdnetChart(allSpecies)}</div>`;
 			}
 			if (layout === "spread") {
-				return `<div class="wallpanel-birdnet-container ${themeClass}">${this.renderBirdnetSpread(species, allSpecies, idx)}</div>`;
+				return `<div class="wallpanel-birdnet-container ${themeClass}" ${themeStyle}>${this.renderBirdnetSpread(species, allSpecies, idx)}</div>`;
 			}
 			if (layout === "plate") {
-				return `<div class="wallpanel-birdnet-container ${themeClass}">${this.renderBirdnetPlate(species, idx)}</div>`;
+				return `<div class="wallpanel-birdnet-container ${themeClass}" ${themeStyle}>${this.renderBirdnetPlate(species, idx)}</div>`;
 			}
 			// Default: "folio" or "latest"
-			return `<div class="wallpanel-birdnet-container ${themeClass}">${this.renderBirdnetFolio(species, idx)}</div>`;
+			return `<div class="wallpanel-birdnet-container ${themeClass}" ${themeStyle}>${this.renderBirdnetFolio(species, idx)}</div>`;
 		}
 
-		renderBirdnetFolio(species, idx = 0) {
+		formatBirdnetTemplate(template, context, defaultText = "") {
+			if (template === undefined || template === null) {
+				return defaultText;
+			}
+			if (typeof template !== "string") {
+				return defaultText;
+			}
+			const trimmed = template.trim();
+			if (trimmed === "" || trimmed.toLowerCase() === "none" || trimmed.toLowerCase() === "false") {
+				return "";
+			}
+			return template.replace(/\$\{([^}]+)\}|\$([a-zA-Z0-9_]+)/g, (match, p1, p2) => {
+				const key = (p1 || p2 || "").trim().toLowerCase();
+				if (context[key] !== undefined && context[key] !== null) {
+					return escapeHtml(String(context[key]));
+				}
+				return match;
+			});
+		}
+
+		renderBirdnetFolio(species, idx = 0, totalSpecies = 1, forceCardOffset = null) {
 			const plateNum = toRoman((idx % 50) + 1);
 			const label = escapeHtml(config.birdnet_label || "BACKYARD");
-			const name = escapeHtml(species.name || "Unknown Bird");
-			const sci = escapeHtml(species.sci || "");
+			const rawName = species.name || "Unknown Bird";
+			const rawSci = species.sci || "";
 
-			let note = "";
+			let defaultNote = "";
 			if (species.count === 1) {
-				note = `Heard for the first time to-day at ${species.last || species.first || "06:00"}.`;
+				defaultNote = `Heard for the first time today at ${species.last || species.first || "06:00"}.`;
 			} else {
 				const ordinalStr = formatOrdinalWords(species.count) || `${species.count}th`;
-				note = `Heard the ${ordinalStr} time to-day, last at ${species.last || "12:00"}.`;
+				defaultNote = `Heard the ${ordinalStr} time today, last at ${species.last || "12:00"}.`;
 			}
 
+			const isPortrait = window.innerHeight > window.innerWidth;
+			const cardOffset = forceCardOffset !== null ? forceCardOffset : (isPortrait ? "none" : this.getBirdnetCardOffset());
+			const offsetClass = cardOffset === "left" ? " offset-left" : cardOffset === "right" ? " offset-right" : "";
+
+			const now = new Date();
+			const dateStr = now.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+
+			const context = {
+				name: rawName,
+				common: rawName,
+				common_name: rawName,
+				sci: rawSci,
+				scientific: rawSci,
+				scientific_name: rawSci,
+				count: species.count || 1,
+				ordinal: formatOrdinalWords(species.count) || `${species.count || 1}th`,
+				time: species.last || species.first || "12:00",
+				last: species.last || species.first || "12:00",
+				last_time: species.last || species.first || "12:00",
+				first: species.first || "06:00",
+				first_time: species.first || "06:00",
+				confidence: species.confidence ? `${Math.round(species.confidence * 100)}%` : "",
+				label: config.birdnet_label || "BACKYARD",
+				date: dateStr,
+				species_count: totalSpecies,
+				x: totalSpecies,
+				total: totalSpecies,
+				plate: plateNum
+			};
+
+			const name = this.formatBirdnetTemplate(config.birdnet_main_text, context, escapeHtml(rawName) + ".");
+			const note = this.formatBirdnetTemplate(config.birdnet_sub_text, context, defaultNote);
+			const sciHtml = rawSci && config.birdnet_sub_text !== "none" ? `<div class="wp-birdnet-sci">${escapeHtml(rawSci)}</div>` : "";
+			const noteHtml = note ? `<div class="wp-birdnet-note">${note}</div>` : "";
+
 			return `
-				<div class="wp-birdnet-mat">
-					<div class="wp-birdnet-plate-card wp-birdnet-folio-card">
+				<div class="wp-birdnet-mat${offsetClass}">
+					<div class="wp-birdnet-plate-card wp-birdnet-folio-card${offsetClass}">
 						<div class="wp-birdnet-inner-border">
 							<div class="wp-birdnet-header">
 								<span class="wp-birdnet-label">${label}</span>
@@ -4952,14 +5192,86 @@ function initWallpanel() {
 								${this.renderPlateArtwork(species, "wp-birdnet-artwork")}
 							</div>
 							<div class="wp-birdnet-footer">
-								<div class="wp-birdnet-name">${name}.</div>
-								<div class="wp-birdnet-sci">${sci}</div>
-								<div class="wp-birdnet-note">${note}</div>
+								<div class="wp-birdnet-name">${name}</div>
+								${sciHtml}
+								${noteHtml}
 							</div>
 						</div>
 					</div>
 				</div>
 			`;
+		}
+
+		getBirdnetCardSide() {
+			const setting = (config.birdnet_card_offset || "auto").toLowerCase();
+			if (setting === "left") {
+				return "right";
+			}
+			if (setting === "right") {
+				return "left";
+			}
+			if (this.infoBox) {
+				const rect = this.infoBox.getBoundingClientRect();
+				const winW = window.innerWidth || 1920;
+				if (rect.width > 20) {
+					const midX = rect.left + rect.width / 2;
+					return midX < winW / 2 ? "left" : "right";
+				}
+			}
+			if (config.style) {
+				const boxStyle = config.style["wallpanel-screensaver-info-box"] || config.style["wallpanel-screensaver-fixed-info-box"];
+				if (boxStyle) {
+					if (boxStyle.left && !boxStyle.right) return "left";
+					if (boxStyle.right && !boxStyle.left) return "right";
+				}
+			}
+			const hasCards = (config.cards && config.cards.length > 0) || (config.badges && config.badges.length > 0);
+			if (hasCards) {
+				return "right";
+			}
+			return "none";
+		}
+
+		getBirdnetCardVAlign() {
+			if (this.infoBox) {
+				const rect = this.infoBox.getBoundingClientRect();
+				const winH = window.innerHeight || 1080;
+				if (rect.height > 20) {
+					const midY = rect.top + rect.height / 2;
+					return midY > winH / 2 ? "top" : "bottom";
+				}
+			}
+			if (config.style) {
+				const boxStyle = config.style["wallpanel-screensaver-info-box"] || config.style["wallpanel-screensaver-fixed-info-box"];
+				if (boxStyle) {
+					if (boxStyle.bottom && !boxStyle.top) return "top";
+				}
+			}
+			return "bottom";
+		}
+
+		isLongCardBox() {
+			if (this.infoBox) {
+				const rect = this.infoBox.getBoundingClientRect();
+				const winH = window.innerHeight || 1080;
+				if (rect.height > 20) {
+					return (rect.height / winH) >= 0.60;
+				}
+			}
+			const cardCount = (config.cards ? config.cards.length : 0) + (config.badges ? config.badges.length : 0);
+			return cardCount >= 5;
+		}
+
+		calculateSpreadFolioAutoRatio() {
+			if (this.infoBox) {
+				const rect = this.infoBox.getBoundingClientRect();
+				const winH = window.innerHeight || 1080;
+				if (rect.height > 40) {
+					const available = (winH - rect.height - 30) / winH;
+					return Math.min(0.80, Math.max(0.40, available));
+				}
+			}
+			return 0.70;
 		}
 
 		getBirdnetCardOffset() {
@@ -5033,7 +5345,8 @@ function initWallpanel() {
 					const spName = escapeHtml(sp.name || "");
 					const isHero = idx === 0 && total >= 4;
 					const heroClass = isHero ? " wp-birdnet-hero-label" : "";
-					const labelY = isHero ? slot.cy + slot.h * 0.48 : slot.cy + slot.h * 0.45;
+					const labelOffset = isHero ? (slot.h * 0.46) : (slot.h * 0.44);
+					const labelY = slot.cy + labelOffset;
 					return `
 						<div class="wp-birdnet-cluster-label${heroClass}" style="left: ${(slot.cx * 100).toFixed(2)}%; top: ${(labelY * 100).toFixed(2)}%;">
 							${spName}
@@ -5047,6 +5360,20 @@ function initWallpanel() {
 			const dateStr = now.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 			const speciesCount = allSpecies.length;
 
+			const clusterContext = {
+				label: config.birdnet_label || "Backyard",
+				date: dateStr,
+				species_count: speciesCount,
+				x: speciesCount,
+				total: speciesCount,
+				count: speciesCount
+			};
+			const defaultMainCaption = `${label} · heard today · ${dateStr} · ${speciesCount} species`;
+			const defaultSubCaption = "Historical plates watercolour after Audubon, Gould, Lear &amp; Broinowski.";
+			const mainCaption = this.formatBirdnetTemplate(config.birdnet_cluster_main || config.birdnet_main_text, clusterContext, defaultMainCaption);
+			const subCaption = this.formatBirdnetTemplate(config.birdnet_cluster_sub !== undefined && config.birdnet_cluster_sub !== "" ? config.birdnet_cluster_sub : config.birdnet_sub_text, clusterContext, defaultSubCaption);
+			const subCaptionHtml = subCaption ? `<div class="wp-birdnet-cluster-caption-sub">${subCaption}</div>` : "";
+
 			return `
 				<div class="wp-birdnet-mat wp-birdnet-cluster-mat">
 					<div class="wp-birdnet-plate-card wp-birdnet-cluster-card">
@@ -5058,11 +5385,9 @@ function initWallpanel() {
 								</div>
 								<div class="wp-birdnet-cluster-caption">
 									<div class="wp-birdnet-cluster-caption-main">
-										${label} · heard to-day · ${dateStr} · ${speciesCount} species
+										${mainCaption}
 									</div>
-									<div class="wp-birdnet-cluster-caption-sub">
-										Historical plates watercolour after Audubon, Gould, Lear &amp; Broinowski.
-									</div>
+									${subCaptionHtml}
 								</div>
 							</div>
 						</div>
@@ -5072,15 +5397,44 @@ function initWallpanel() {
 		}
 
 		renderBirdnetSpread(species, allSpecies = [], idx = 0) {
-			const clusterHtml = this.renderBirdnetCluster(allSpecies, false, "none");
-			const folioHtml = this.renderBirdnetFolio(species, idx, allSpecies.length);
+			const cardSetting = (config.birdnet_spread_cards || "auto").toString().toLowerCase().trim();
+			const isEnabled = cardSetting !== "disabled" && cardSetting !== "false" && cardSetting !== "none";
+			const cardSide = isEnabled ? this.getBirdnetCardSide() : "none";
+			const hasCardOverlap = isEnabled && cardSide !== "none";
+
+			const folioOnLeft = hasCardOverlap && cardSide === "left";
+			let scaleRatio = 0.70;
+			let vAlign = "bottom";
+
+			if (hasCardOverlap) {
+				vAlign = this.getBirdnetCardVAlign();
+				if (cardSetting === "auto" || cardSetting === "true") {
+					scaleRatio = this.calculateSpreadFolioAutoRatio();
+				} else if (cardSetting === "fixed") {
+					scaleRatio = 0.70;
+				} else {
+					const parsed = parseFloat(cardSetting);
+					scaleRatio = !isNaN(parsed) && parsed > 0.2 && parsed <= 1.0 ? parsed : 0.70;
+				}
+			}
+
+			const clusterHtml = this.renderBirdnetCluster(allSpecies, true, "none");
+			const folioHtml = this.renderBirdnetFolio(species, idx, allSpecies.length, "none");
+
+			const leftContent = folioOnLeft ? folioHtml : clusterHtml;
+			const rightContent = folioOnLeft ? clusterHtml : folioHtml;
+			const leftClass = folioOnLeft ? "wp-birdnet-spread-pane-folio" : "wp-birdnet-spread-pane-cluster";
+			const rightClass = folioOnLeft ? "wp-birdnet-spread-pane-cluster" : "wp-birdnet-spread-pane-folio";
+
+			const compactClass = hasCardOverlap ? ` wp-birdnet-spread-compact valign-${vAlign}` : "";
+			const styleAttr = hasCardOverlap ? `style="--wp-spread-folio-scale: ${scaleRatio.toFixed(3)};"` : "";
 
 			return `
 				<div class="wp-birdnet-mat wp-birdnet-spread-mat">
-					<div class="wp-birdnet-spread">
-						<div class="wp-birdnet-spread-left">${clusterHtml}</div>
+					<div class="wp-birdnet-spread${compactClass}" ${styleAttr}>
+						<div class="wp-birdnet-spread-left ${leftClass}">${leftContent}</div>
 						<div class="wp-birdnet-spread-spine"></div>
-						<div class="wp-birdnet-spread-right">${folioHtml}</div>
+						<div class="wp-birdnet-spread-right ${rightClass}">${rightContent}</div>
 					</div>
 				</div>
 			`;
@@ -5108,7 +5462,14 @@ function initWallpanel() {
 
 					return `
 						<tr>
-							<td class="wp-birdnet-chart-species">${escapeHtml(sp.name)}</td>
+							<td class="wp-birdnet-chart-species">
+								<div class="wp-birdnet-chart-species-cell">
+									<div class="wp-birdnet-chart-thumb-wrap">
+										${this.renderPlateArtwork(sp, "wp-birdnet-chart-thumb")}
+									</div>
+									<span class="wp-birdnet-chart-species-name">${escapeHtml(sp.name)}</span>
+								</div>
+							</td>
 							${cells}
 							<td><strong>${sp.count}</strong></td>
 						</tr>
@@ -5149,15 +5510,48 @@ function initWallpanel() {
 			`;
 		}
 
-		renderBirdnetPlate(species, idx = 0) {
+		renderBirdnetPlate(species, idx = 0, forceCardOffset = null) {
 			const plateNum = toRoman((idx % 50) + 1);
 			const label = escapeHtml(config.birdnet_label || "BACKYARD");
-			const name = escapeHtml(species.name || "Unknown Bird");
-			const sci = escapeHtml(species.sci || "");
+			const rawName = species.name || "Unknown Bird";
+			const rawSci = species.sci || "";
+
+			const isPortrait = window.innerHeight > window.innerWidth;
+			const cardOffset = forceCardOffset !== null ? forceCardOffset : (isPortrait ? "none" : this.getBirdnetCardOffset());
+			const offsetClass = cardOffset === "left" ? " offset-left" : cardOffset === "right" ? " offset-right" : "";
+
+			const now = new Date();
+			const dateStr = now.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+
+			const context = {
+				name: rawName,
+				common: rawName,
+				common_name: rawName,
+				sci: rawSci,
+				scientific: rawSci,
+				scientific_name: rawSci,
+				count: species.count || 1,
+				ordinal: formatOrdinalWords(species.count) || `${species.count || 1}th`,
+				time: species.last || species.first || "12:00",
+				last: species.last || species.first || "12:00",
+				last_time: species.last || species.first || "12:00",
+				first: species.first || "06:00",
+				first_time: species.first || "06:00",
+				confidence: species.confidence ? `${Math.round(species.confidence * 100)}%` : "",
+				label: config.birdnet_label || "BACKYARD",
+				date: dateStr,
+				species_count: 1,
+				plate: plateNum
+			};
+
+			const name = this.formatBirdnetTemplate(config.birdnet_main_text, context, escapeHtml(rawName) + ".");
+			const note = this.formatBirdnetTemplate(config.birdnet_sub_text, context, "");
+			const noteHtml = note ? `<div class="wp-birdnet-note">${note}</div>` : "";
+			const sciHtml = rawSci ? `<div class="wp-birdnet-sci">${escapeHtml(rawSci)}</div>` : "";
 
 			return `
-				<div class="wp-birdnet-mat">
-					<div class="wp-birdnet-plate-card" style="width: 90%; height: 90%; aspect-ratio: 0.72;">
+				<div class="wp-birdnet-mat${offsetClass}">
+					<div class="wp-birdnet-plate-card${offsetClass}" style="width: 90%; height: 90%; aspect-ratio: 0.72;">
 						<div class="wp-birdnet-inner-border">
 							<div class="wp-birdnet-header">
 								<span class="wp-birdnet-label">${label}</span>
@@ -5167,8 +5561,9 @@ function initWallpanel() {
 								${this.renderPlateArtwork(species, "wp-birdnet-artwork")}
 							</div>
 							<div class="wp-birdnet-footer" style="border: none;">
-								<div class="wp-birdnet-name">${name}.</div>
-								<div class="wp-birdnet-sci">${sci}</div>
+								<div class="wp-birdnet-name">${name}</div>
+								${sciHtml}
+								${noteHtml}
 							</div>
 						</div>
 					</div>
@@ -5538,7 +5933,7 @@ function initWallpanel() {
 				}
 			}
 
-			if (layout === "cluster" || layout === "spread" || layout === "auto") {
+			if (layout === "cluster" || layout === "spread" || layout === "chart" || layout === "auto") {
 				await Promise.all(
 					allSpecies.slice(0, 16).map(async (s) => {
 						const res = await this.resolveBirdImage(s.sci, s.name);

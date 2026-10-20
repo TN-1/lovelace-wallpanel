@@ -301,19 +301,156 @@ Until pointed at an active BirdNET-Go server (or when left unconfigured or set t
 
 | Layout | Description |
 | --- | --- |
-| `folio` | **Victorian Folio Bookplate** (default). Double-bordered antique plate featuring the garden tag, Roman numeral plate numbering (`Pl. XXIII.`), centered bird artwork, small-caps common name, italic Latin binomial, and detection note (`Heard the thirty-second time to-day, last at 14:02.`). |
+| `folio` | **Victorian Folio Bookplate** (default). Double-bordered antique plate featuring the garden tag, Roman numeral plate numbering (`Pl. XXIII.`), centered bird artwork, small-caps common name, italic Latin binomial, and detection note (`Heard the thirty-second time today, last at 14:02.`). |
 | `cluster` | **Specimen Sheet**. Collage of birds heard today perched on branches with species count and date caption. Dynamically adapts between portrait and landscape aspect ratios. |
 | `spread` | **Dual-Frame Folio Spread**. Side-by-side spread displaying the specimen sheet on the left and the featured Victorian folio plate on the right (collapses to single plate in portrait mode). |
 | `plate` | **Classic Natural History Plate**. Clean, minimalist historical plate with antique titling. |
 | `chart` | **Day Activity Ledger**. 24-hour activity grid matrix showing hourly detection frequency per species. |
 | `latest` | Focuses specifically on the most recently detected visitor. |
-| `auto` | Intelligently cycles across individual species folio plates, periodically presenting the specimen sheet and activity chart. |
+| `auto` | Intelligently cycles across species plates and summaries. When extended vertical card boxes are detected on one flank, it automatically suppresses two-sided spreads and selects card-safe offset templates (`folio`, `plate`, `cluster`). |
 
-### Color Themes
+### Color Themes & Custom Styling
 
-- `sage` (default): Authentic slate sage grey-blue plate inside a warm ivory mat.
-- `parchment`: Warm antique cream book page with sepia inking.
-- `dark`: Deep graphite slate for low-light or OLED displays.
+WallPanel provides built-in color palettes calibrated for natural history prints, while also supporting custom plate colors, bespoke mat coloring, and granular CSS variable overrides:
+
+#### 1. Built-in Theme Presets (`birdnet_theme`)
+
+- `sage` (default): Authentic slate sage grey-blue plate background (`#7f908f`) inside a warm museum mat (`#ebe6da`).
+- `parchment`: Warm antique cream book page (`#f9f5ec`) with soft aged matting (`#e8e2d2`) and sepia inking (`#2b2520`).
+- `dark`: Deep graphite slate (`#1d2424`) with obsidian matting (`#141718`) and pale sage typography (`#e2e8e7`) for low-light or OLED displays.
+- `forest`: Deep botanical moss-green plate (`#596752`) with light lichen matting (`#e2e5db`).
+- `slate`: Cool mineral blue-grey plate (`#586d77`) with mist-grey matting (`#dce2e3`).
+- `ivory`: Refined bright archival ivory plate (`#faf8f5`) with warm linen matting (`#f0ece3`).
+
+```yaml
+wallpanel:
+  enabled: true
+  birdnet_layout: "auto"
+  birdnet_theme: "sage" # "sage", "parchment", "dark", "forest", "slate", "ivory"
+```
+
+#### 2. Mat Color Configuration (`birdnet_mat_color`)
+
+The mat is the outer gallery border surrounding the inner plate or folio card. By default, it inherits the palette preset (such as `#ebe6da` in `sage`). You can customize the mat border independently:
+
+- Any CSS color: e.g. `"#1d2424"`, `"#2a3433"`, `rgb(20, 24, 25)`
+- `"same"` or `"match"`: Sets the mat to the exact same color as the inner plate, removing the two-tone border for a uniform single-color background across the entire viewport.
+- Preset keywords: `"dark"`, `"parchment"`, `"sage"`, `"forest"`, `"slate"`, `"ivory"`
+
+```yaml
+wallpanel:
+  enabled: true
+  birdnet_layout: "plate"
+  birdnet_theme: "sage"
+  birdnet_mat_color: "same" # Seamless full-screen sage background
+  # or:
+  # birdnet_mat_color: "#141718" # Dark museum matting around sage plate
+```
+
+#### 3. Direct Hex / RGB Colors in YAML
+
+You can pass any CSS hex color (e.g. `"#6b7d7b"`), `rgb()`, or `hsl()` string directly to `birdnet_theme`:
+
+```yaml
+wallpanel:
+  enabled: true
+  birdnet_layout: "cluster"
+  birdnet_theme: "#5c6b64" # Custom plate background color
+```
+
+#### 4. Granular CSS Variable Overrides (`custom_css`)
+
+For full bespoke styling, override the CSS variables via `custom_css`:
+
+```yaml
+wallpanel:
+  enabled: true
+  birdnet_theme: "sage"
+  custom_css: |
+    .wallpanel-birdnet-container {
+      --wp-birdnet-plate: #758784;     /* Inner plate card background */
+      --wp-birdnet-mat: #e6dfd1;       /* Outer museum matting border */
+      --wp-birdnet-ink: #1c2626;       /* Primary text & rule borders */
+      --wp-birdnet-ink-muted: #384948; /* Secondary scientific notes */
+      --wp-birdnet-border: #1c2626;    /* Card framing border */
+    }
+```
+
+### Screensaver Card Clearance (`birdnet_card_offset`)
+
+When pairing WallPanel screensaver cards (e.g., clocks, weather forecasts, or entity badges) alongside the screensaver, WallPanel can automatically or manually offset `folio`, `plate`, and `cluster` layouts to avoid card occlusion:
+
+| Setting | Behavior |
+| :--- | :--- |
+| `auto` (default) | Automatically detects screensaver cards and shifts plates or specimen clusters to the opposite flank, leaving an unobstructed column ($620\text{px}\text{--}1,150\text{px}$) for cards. |
+| `left` | Forces the artwork plate or specimen sheet to align to the left flank, leaving the right side clear for cards. |
+| `right` | Forces the artwork plate or specimen sheet to align to the right flank, leaving the left side clear for cards. |
+| `none` | Keeps plates and specimen clusters horizontally centered on the display. |
+
+```yaml
+wallpanel:
+  enabled: true
+  birdnet_layout: "folio" # or "cluster", "plate", "auto"
+  birdnet_card_offset: "auto" # Leaves opposite flank open for cards
+```
+
+### Spread Layout Card Integration (`birdnet_spread_cards`)
+
+When utilizing the dual-frame `spread` layout alongside screensaver overlay cards (e.g., clocks, weather forecasts, or sensor summaries), WallPanel can reposition and scale the folio bookplate so that cards share that flank without visual collision, preserving the specimen cluster at full scale on the opposite flank:
+
+| Setting | Behavior |
+| :--- | :--- |
+| `disabled` (default) | Standard dual-frame spread: specimen cluster on the left, full-size folio on the right. |
+| `auto` | Automatically detects the card flank, positions the folio on the card flank, and dynamically scales the folio down to clear the cards. |
+| `fixed` | Positions the folio on the card flank and scales the folio down to a calibrated ratio (`0.70`). A custom numeric ratio between `0.2` and `1.0` may also be supplied directly (e.g., `0.75`). |
+
+```yaml
+wallpanel:
+  enabled: true
+  birdnet_layout: "spread"
+  birdnet_spread_cards: "auto" # "disabled", "auto", or "fixed" (or 0.70)
+```
+
+### Configurable Text & Templating
+
+WallPanel supports custom format strings and variable interpolation for primary and secondary text across all BirdNET views:
+
+| Setting | Applies To | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `birdnet_main_text` | `folio`, `plate`, `spread` | `${name}.` | Primary heading or species title. |
+| `birdnet_sub_text` | `folio`, `plate`, `spread` | Victorian detection note | Secondary description, scientific binomial, or custom status. |
+| `birdnet_cluster_main` | `cluster` | `${label} · heard today · ${date} · ${species_count} species` | Primary summary caption on specimen cluster sheet. |
+| `birdnet_cluster_sub` | `cluster` | `Historical plates watercolour after Audubon...` | Secondary attribution subtitle on specimen cluster sheet. |
+
+#### Available Variables
+
+The following placeholders are dynamically interpolated when enclosed within `${...}`:
+
+| Variable | Description | Example |
+| :--- | :--- | :--- |
+| `${name}` / `${common}` | Species vernacular/common name | `Australian Magpie` |
+| `${sci}` / `${scientific}` | Latin binomial | `Gymnorhina tibicen` |
+| `${count}` | Total detections recorded today | `35` |
+| `${ordinal}` | Word-form ordinal detection rank | `thirty-fifth` |
+| `${time}` / `${last}` | Timestamp of most recent detection | `14:02` |
+| `${first}` | Timestamp of initial detection today | `06:14` |
+| `${confidence}` | Confidence score of most recent detection | `94%` |
+| `${plate}` | Roman numeral plate index | `Pl. XXIII.` |
+| `${label}` | Garden or station designation | `BACKYARD` |
+| `${date}` | Formatted calendar date | `Tue 20 Oct` |
+| `${species_count}` | Total unique species observed today | `12` |
+
+#### YAML Example
+
+```yaml
+wallpanel:
+  enabled: true
+  birdnet_layout: "spread"
+  birdnet_main_text: "${name}"
+  birdnet_sub_text: "${sci} · Heard ${count} times today (last at ${time})"
+  birdnet_cluster_main: "${label} · ${species_count} species recorded on ${date}"
+  birdnet_cluster_sub: "Live acoustic monitoring via BirdNET-Go"
+```
 
 ### Artwork Resolution Hierarchy
 
