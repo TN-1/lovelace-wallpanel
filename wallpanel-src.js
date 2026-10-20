@@ -539,9 +539,24 @@ function getBirdnetCandidateFilenames(sciName, commonName, vettedFile = "") {
 
 const BIRDNET_VETTED_PLATES = {};
 
+const birdnetFontsLinkId = "wallpanel-birdnet-fonts";
+
+function ensureBirdnetFonts() {
+	// @font-face rules are not applied from inside a shadow root, and an @import is ignored unless
+	// it is the first rule of its stylesheet. Load the plate fonts from the document instead.
+	if (typeof document === "undefined" || document.getElementById(birdnetFontsLinkId)) {
+		return;
+	}
+	const link = document.createElement("link");
+	link.id = birdnetFontsLinkId;
+	link.rel = "stylesheet";
+	link.href =
+		"https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap";
+	document.head.appendChild(link);
+}
+
 function getBirdnetCss() {
 	return `
-		@import url('https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap');
 		.wallpanel-birdnet-container {
 			width: 100%;
 			height: 100%;
@@ -5927,6 +5942,7 @@ function initWallpanel() {
 		}
 
 		async updateMediaFromBirdnet(element) {
+			ensureBirdnetFonts();
 			const mediaUrl = element.mediaUrl || "";
 			const match = mediaUrl.match(/^birdnet:\/\/([^/?]+)(?:\/([^?]+))?(?:\?idx=(\d+))?/);
 			let layout = match ? match[1] : config.birdnet_layout || "folio";
