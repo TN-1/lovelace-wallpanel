@@ -319,47 +319,99 @@ function formatOrdinalWords(n) {
 }
 
 function getOvalSlots(n, isPortrait = false) {
+	// Slots are described by centre and size in fractions of the canvas. `at()` clamps the box
+	// into the canvas but keeps the requested centre, so callers must use x/y/w/h for anything
+	// that has to line up with the drawn box (for example labels).
 	function at(cx, cy, w, h, scale = 1.0) {
 		const x = Math.min(Math.max(cx - w / 2, 0.0), 1 - w);
 		const y = Math.min(Math.max(cy - h / 2, 0.0), 1 - h);
 		return { x, y, w, h, cx, cy, scale };
 	}
 
-	if (n <= 1) {
-		return [at(0.5, 0.44, 0.60, 0.65, 1.0)];
+	// Plate artwork usually has transparent margins, so a little box overlap is acceptable.
+	// Report a collision only when the intersection covers a noticeable part of the smaller box.
+	function overlaps(a, b, maxFraction = 0.22) {
+		const ix = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+		const iy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+		if (ix <= 0 || iy <= 0) {
+			return false;
+		}
+		return (ix * iy) / Math.min(a.w * a.h, b.w * b.h) > maxFraction;
 	}
-	if (n === 2) {
-		const w = isPortrait ? 0.40 : 0.30;
-		const h = isPortrait ? 0.34 : 0.30;
-		return [at(0.5, 0.28, w, h, 1.08), at(0.5, 0.60, w, h, 0.88)];
-	}
-	if (n === 3) {
-		const ring = 3;
-		const rx = isPortrait ? 0.26 : 0.30;
-		const ry = isPortrait ? 0.28 : 0.24;
-		const w = isPortrait ? 0.30 : 0.22;
-		const h = isPortrait ? 0.30 : 0.26;
-		const slots = [];
-		for (let i = 0; i < ring; i++) {
-			const a = (-90 + (360 * i) / ring) * (Math.PI / 180);
-			const scale = Number((1.08 - 0.10 * i).toFixed(3));
-			slots.push(at(0.5 + rx * Math.cos(a), 0.44 + ry * Math.sin(a), w, h, scale));
+
+	// Shrink the given specimens around their centres until no pair of slots intersects.
+	// Fixed slots (the hero) take part in the test but keep their size.
+	function resolveCollisions(fixed, specs) {
+		let factor = 1.0;
+		let slots = [];
+		for (let attempt = 0; attempt < 24 && factor > 0.55; attempt++) {
+			slots = specs.map((p) => at(p.cx, p.cy, p.w * factor, p.h * factor, p.scale));
+			const all = fixed.concat(slots);
+			let collides = false;
+			for (let i = 0; i < all.length && !collides; i++) {
+				for (let j = i + 1; j < all.length; j++) {
+					if (overlaps(all[i], all[j])) {
+						collides = true;
+						break;
+					}
+				}
+			}
+			if (!collides) {
+				break;
+			}
+			factor *= 0.94;
 		}
 		return slots;
 	}
 
-	// n >= 4: Center hero bird (#1) + Bilaterally balanced surrounding ring specimens (#2 to #N)
+	if (n <= 1) {
+		return [at(0.5, 0.44, 0.6, 0.65, 1.0)];
+	}
+	if (n === 2) {
+		const w = isPortrait ? 0.4 : 0.3;
+		const h = isPortrait ? 0.34 : 0.3;
+		return resolveCollisions(
+			[],
+			[
+				{ cx: 0.5, cy: 0.28, w: w * 1.08, h: h * 1.08, scale: 1.08 },
+				{ cx: 0.5, cy: 0.6, w: w * 0.88, h: h * 0.88, scale: 0.88 }
+			]
+		);
+	}
+	if (n === 3) {
+		const ring = 3;
+		const rx = isPortrait ? 0.26 : 0.3;
+		const ry = isPortrait ? 0.28 : 0.24;
+		const w = isPortrait ? 0.3 : 0.22;
+		const h = isPortrait ? 0.3 : 0.26;
+		const specs = [];
+		for (let i = 0; i < ring; i++) {
+			const a = (-90 + (360 * i) / ring) * (Math.PI / 180);
+			const scale = Number((1.08 - 0.1 * i).toFixed(3));
+			specs.push({
+				cx: 0.5 + rx * Math.cos(a),
+				cy: 0.44 + ry * Math.sin(a),
+				w: w * scale,
+				h: h * scale,
+				scale
+			});
+		}
+		return resolveCollisions([], specs);
+	}
+
+	// n >= 4: centre hero specimen (#1) with a bilaterally balanced ring of specimens (#2 to #N).
+	// Ring order alternates right/left of the apex, so apparent size falls off from apex to base.
 	const ring = n - 1;
 	const rx = isPortrait ? 0.35 : 0.39;
 	const ry = isPortrait ? 0.385 : 0.37;
 	const cyCenter = isPortrait ? 0.465 : 0.46;
-	const heroW = isPortrait ? 0.42 : 0.40;
+	const heroW = isPortrait ? 0.42 : 0.4;
 	const heroH = isPortrait ? 0.44 : 0.42;
 	const slotW = isPortrait ? 0.24 : 0.23;
 	const slotH = isPortrait ? 0.24 : 0.23;
 
-	const centre = [at(0.5, cyCenter, heroW, heroH, 1.0)];
-	const slots = [];
+	const hero = at(0.5, cyCenter, heroW, heroH, 1.0);
+	const specs = [];
 	for (let k = 0; k < ring; k++) {
 		let aDeg;
 		if (k === 0) {
@@ -370,16 +422,29 @@ function getOvalSlots(n, isPortrait = false) {
 			aDeg = k % 2 === 1 ? -90 + delta : -90 - delta;
 		}
 		const a = aDeg * (Math.PI / 180);
-		// Dramatic bilateral scale: apex 1.15 down to 0.75 for base specimens
-		const scale = ring > 1 ? Number((1.15 - 0.40 * (k / (ring - 1))).toFixed(3)) : 1.0;
-		const w = slotW * scale;
-		const h = slotH * scale;
-		slots.push(at(0.5 + rx * Math.cos(a), cyCenter + ry * Math.sin(a), w, h, scale));
+		// Apex 1.15 down to 0.75 for the base specimens
+		const scale = ring > 1 ? Number((1.15 - 0.4 * (k / (ring - 1))).toFixed(3)) : 1.0;
+		specs.push({
+			cx: 0.5 + rx * Math.cos(a),
+			cy: cyCenter + ry * Math.sin(a),
+			w: slotW * scale,
+			h: slotH * scale,
+			scale
+		});
 	}
-	return centre.concat(slots);
+	return [hero].concat(resolveCollisions([hero], specs));
 }
 
 const probedUrlCache = new Map();
+const probedUrlCacheMaxSize = 500;
+
+function rememberProbeResult(url, ok) {
+	if (probedUrlCache.size >= probedUrlCacheMaxSize) {
+		// Maps iterate in insertion order, so the first key is the oldest entry
+		probedUrlCache.delete(probedUrlCache.keys().next().value);
+	}
+	probedUrlCache.set(url, ok);
+}
 
 function probeImageUrl(url, timeoutMs = 1500) {
 	if (probedUrlCache.has(url)) {
@@ -389,47 +454,47 @@ function probeImageUrl(url, timeoutMs = 1500) {
 		if (typeof Image !== "undefined") {
 			let finished = false;
 			const img = new Image();
-			const timer = setTimeout(() => {
-				if (!finished) {
-					finished = true;
-					img.src = "";
-					probedUrlCache.set(url, false);
-					resolve(false);
+			const finish = (ok, cacheResult) => {
+				if (finished) {
+					return;
 				}
-			}, timeoutMs);
-
-			img.onload = () => {
-				if (!finished) {
-					finished = true;
-					clearTimeout(timer);
-					probedUrlCache.set(url, true);
-					resolve(true);
+				finished = true;
+				clearTimeout(timer);
+				// Detach handlers and abort any pending load so the element can be collected
+				img.onload = null;
+				img.onerror = null;
+				if (!ok) {
+					img.removeAttribute("src");
 				}
+				if (cacheResult) {
+					rememberProbeResult(url, ok);
+				}
+				resolve(ok);
 			};
-
-			img.onerror = () => {
-				if (!finished) {
-					finished = true;
-					clearTimeout(timer);
-					probedUrlCache.set(url, false);
-					resolve(false);
-				}
-			};
-
+			// A timeout is not proof that the file is missing, so it is not cached
+			const timer = setTimeout(() => finish(false, false), timeoutMs);
+			img.onload = () => finish(true, true);
+			img.onerror = () => finish(false, true);
 			img.src = url;
 		} else {
-			fetch(url, { method: "HEAD" })
+			const controller = new AbortController();
+			const timer = setTimeout(() => controller.abort(), timeoutMs);
+			fetch(url, { method: "HEAD", signal: controller.signal })
 				.then((r) => {
-					const ok = r.ok;
-					probedUrlCache.set(url, ok);
-					resolve(ok);
+					rememberProbeResult(url, r.ok);
+					resolve(r.ok);
 				})
-				.catch(() => {
-					probedUrlCache.set(url, false);
-					resolve(false);
-				});
+				.catch(() => resolve(false))
+				.finally(() => clearTimeout(timer));
 		}
 	});
+}
+
+function getMediaListUpdateIntervalSeconds() {
+	if (mediaSourceType() === "birdnet" && Number(config.birdnet_update_interval) > 0) {
+		return Number(config.birdnet_update_interval);
+	}
+	return config.media_list_update_interval;
 }
 
 function getBirdnetCandidateFilenames(sciName, commonName, vettedFile = "") {
@@ -473,81 +538,6 @@ function getBirdnetCandidateFilenames(sciName, commonName, vettedFile = "") {
 }
 
 const BIRDNET_VETTED_PLATES = {};
-
-const BIRDNET_DEMO_SPECIES = [
-	{
-		name: "Rainbow Lorikeet",
-		sci: "Trichoglossus moluccanus",
-		count: 32,
-		conf: 0.94,
-		last: "14:02",
-		first: "06:15",
-		hourly: [0, 0, 0, 0, 0, 0, 2, 5, 8, 4, 3, 2, 4, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-	},
-	{
-		name: "Australian Magpie",
-		sci: "Gymnorhina tibicen",
-		count: 24,
-		conf: 0.92,
-		last: "13:45",
-		first: "05:40",
-		hourly: [0, 0, 0, 0, 0, 3, 6, 4, 2, 1, 3, 2, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-	},
-	{
-		name: "Sulphur-crested Cockatoo",
-		sci: "Cacatua galerita",
-		count: 18,
-		conf: 0.95,
-		last: "12:10",
-		first: "07:20",
-		hourly: [0, 0, 0, 0, 0, 0, 0, 4, 6, 3, 2, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-	},
-	{
-		name: "Superb Fairywren",
-		sci: "Malurus cyaneus",
-		count: 15,
-		conf: 0.88,
-		last: "11:55",
-		first: "06:45",
-		hourly: [0, 0, 0, 0, 0, 0, 3, 5, 2, 2, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-	},
-	{
-		name: "Eurasian Blackbird",
-		sci: "Turdus merula",
-		count: 12,
-		conf: 0.89,
-		last: "10:30",
-		first: "05:25",
-		hourly: [0, 0, 0, 0, 0, 4, 3, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-	},
-	{
-		name: "Laughing Kookaburra",
-		sci: "Dacelo novaeguineae",
-		count: 9,
-		conf: 0.96,
-		last: "09:15",
-		first: "05:50",
-		hourly: [0, 0, 0, 0, 0, 3, 4, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-	},
-	{
-		name: "Northern Cardinal",
-		sci: "Cardinalis cardinalis",
-		count: 8,
-		conf: 0.91,
-		last: "08:40",
-		first: "06:10",
-		hourly: [0, 0, 0, 0, 0, 0, 2, 4, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-	},
-	{
-		name: "Blue Jay",
-		sci: "Cyanocitta cristata",
-		count: 7,
-		conf: 0.93,
-		last: "08:15",
-		first: "06:30",
-		hourly: [0, 0, 0, 0, 0, 0, 1, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-	}
-];
 
 function getBirdnetCss() {
 	return `
@@ -2093,12 +2083,10 @@ function mediaSourceType() {
 	if (!config.show_images) {
 		return "";
 	}
-	if (config.image_url && config.image_url.startsWith("birdnet")) return "birdnet";
+	if (config.image_url && config.image_url.startsWith("birdnet://")) return "birdnet";
 	if (
 		config.birdnet_url &&
-		(!config.image_url ||
-			config.image_url === defaultConfig["image_url"] ||
-			config.image_url.startsWith("birdnet"))
+		(!config.image_url || config.image_url === defaultConfig["image_url"] || config.image_url.startsWith("birdnet://"))
 	) {
 		return "birdnet";
 	}
@@ -3925,7 +3913,7 @@ function initWallpanel() {
 			if (this.updatingMediaList) return;
 			if (this.mediaListRetryAt > Date.now()) return;
 			if (!force) {
-				if (new Date().getTime() - this.lastMediaListUpdate < config.media_list_update_interval * 1000) {
+				if (new Date().getTime() - this.lastMediaListUpdate < getMediaListUpdateIntervalSeconds() * 1000) {
 					return;
 				}
 			}
@@ -4614,7 +4602,7 @@ function initWallpanel() {
 			let speciesList = [];
 			const birdnetUrl = (config.birdnet_url || "").trim().replace(/\/+$/, "");
 
-			if (birdnetUrl && birdnetUrl !== "demo") {
+			if (birdnetUrl) {
 				try {
 					const headers = {};
 					if (config.birdnet_token) {
@@ -4644,12 +4632,14 @@ function initWallpanel() {
 						speciesList = this.processBirdnetApiResponse(dailyResp, recentResp);
 					}
 				} catch (e) {
-					logger.warn("BirdNET-Go API request failed, falling back to demo garden:", e);
+					logger.warn("BirdNET-Go API request failed:", e);
 				}
 			}
 
 			if (!speciesList || speciesList.length === 0) {
-				speciesList = this.getBirdnetDemoData();
+				// Keep the last real data if we have it; otherwise the layouts render an empty sheet
+				logger.warn("BirdNET-Go returned no usable species");
+				speciesList = this.birdnetSpecies ? [...this.birdnetSpecies] : [];
 			}
 
 			// Apply sorting
@@ -4695,7 +4685,7 @@ function initWallpanel() {
 						mediaUrls.push(`birdnet://${chosen}/${encodeURIComponent(sp.sci)}?idx=${idx}`);
 					}
 				});
-				if (!mediaUrls.some(u => u.includes("cluster"))) {
+				if (!mediaUrls.some((u) => u.includes("cluster"))) {
 					mediaUrls.push("birdnet://cluster");
 				}
 				if (order === "random") {
@@ -4715,9 +4705,17 @@ function initWallpanel() {
 			this.lastMediaListUpdate = Date.now();
 
 			// Preload images in background
-			for (const sp of speciesList) {
-				this.resolveBirdImage(sp.sci, sp.name);
-			}
+			// Limited concurrency avoids a burst of probe requests (404s) when many species are listed
+			const preloadQueue = [...speciesList];
+			const preloadWorker = async () => {
+				while (preloadQueue.length) {
+					const sp = preloadQueue.shift();
+
+					await this.resolveBirdImage(sp.sci, sp.name);
+				}
+			};
+			preloadWorker();
+			preloadWorker();
 
 			return this.mediaList;
 		}
@@ -4800,21 +4798,6 @@ function initWallpanel() {
 			return Array.from(speciesMap.values());
 		}
 
-		getBirdnetDemoData() {
-			const now = new Date();
-			const currentHour = now.getHours();
-			const currentMin = now.getMinutes();
-
-			return BIRDNET_DEMO_SPECIES.map((demo, idx) => {
-				const item = { ...demo };
-				const hourOffset = (idx * 37) % 60;
-				const demoHour = Math.max(5, (currentHour - Math.floor(idx / 2)) % 24);
-				const demoMin = (currentMin + hourOffset) % 60;
-				item.last = `${String(demoHour).padStart(2, "0")}:${String(demoMin).padStart(2, "0")}`;
-				return item;
-			});
-		}
-
 		async loadPlatesJson(url) {
 			if (!url) return;
 			try {
@@ -4833,10 +4816,26 @@ function initWallpanel() {
 
 		async resolveBirdImage(sciName, commonName = "") {
 			if (!sciName) return null;
-			if (birdnetImageCache.has(sciName)) {
-				return birdnetImageCache.get(sciName);
+			const cached = birdnetImageCache.get(sciName);
+			// Failed lookups carry retryAt so a transient outage does not blank a plate permanently
+			if (cached && !(cached.retryAt && Date.now() >= cached.retryAt)) {
+				return cached;
 			}
+			// Share one lookup between concurrent callers instead of repeating every probe
+			if (!this.birdnetResolvePending) {
+				this.birdnetResolvePending = new Map();
+			}
+			let pending = this.birdnetResolvePending.get(sciName);
+			if (!pending) {
+				pending = this.resolveBirdImageUncached(sciName, commonName).finally(() => {
+					this.birdnetResolvePending.delete(sciName);
+				});
+				this.birdnetResolvePending.set(sciName, pending);
+			}
+			return pending;
+		}
 
+		async resolveBirdImageUncached(sciName, commonName = "") {
 			// Deduce commonName from birdnetSpecies if not provided
 			if (!commonName && this.birdnetSpecies) {
 				const sp = this.birdnetSpecies.find((s) => s.sci === sciName);
@@ -4885,7 +4884,6 @@ function initWallpanel() {
 			if (!this.loadedPlatesUrl && !this.attemptedAutoPlates) {
 				this.attemptedAutoPlates = true;
 				for (const autoUrl of ["/local/birds/plates.json", "/media/local/birds/plates.json"]) {
-					// eslint-disable-next-line no-await-in-loop
 					await this.loadPlatesJson(autoUrl);
 					if (this.loadedPlatesUrl) break;
 				}
@@ -4941,8 +4939,8 @@ function initWallpanel() {
 
 				for (const basePath of this.birdnetLocalPaths) {
 					for (const fname of candidateFilenames) {
-						const candidateUrl = `${basePath}${fname}`;
-						// eslint-disable-next-line no-await-in-loop
+						const candidateUrl = `${basePath}${fname.split("/").map(encodeURIComponent).join("/")}`;
+
 						const exists = await probeImageUrl(candidateUrl);
 						if (exists) {
 							const pIdx = this.birdnetLocalPaths.indexOf(basePath);
@@ -5012,7 +5010,7 @@ function initWallpanel() {
 				logger.debug(`iNaturalist photo lookup failed for ${sciName}:`, e);
 			}
 
-			const emptyEntry = { url: "", box: null, artist: "", source: "" };
+			const emptyEntry = { url: "", box: null, artist: "", source: "", retryAt: Date.now() + 10 * 60 * 1000 };
 			birdnetImageCache.set(sciName, emptyEntry);
 			return emptyEntry;
 		}
@@ -5020,6 +5018,7 @@ function initWallpanel() {
 		renderPlateArtwork(species, className = "wp-birdnet-artwork", style = "") {
 			const entry = (species && species.sci && birdnetImageCache.get(species.sci)) || {};
 			const imgUrl = species.image || entry.url || "";
+			const safeImgUrl = escapeHtml(imgUrl);
 			const box = species.box || entry.box;
 			const altName = escapeHtml(species.name || "");
 
@@ -5027,7 +5026,8 @@ function initWallpanel() {
 			let blendMode = "multiply";
 			let blendFilter = "contrast(1.06) brightness(1.04)";
 
-			const isTransparent = imgUrl.toLowerCase().includes(".png") ||
+			const isTransparent =
+				imgUrl.toLowerCase().includes(".png") ||
 				imgUrl.toLowerCase().includes(".webp") ||
 				imgUrl.toLowerCase().includes("transparent");
 
@@ -5040,7 +5040,7 @@ function initWallpanel() {
 			}
 
 			if (box && Array.isArray(box) && box.length === 4) {
-				const [x0, y0, x1, y1] = box;
+				const [x0, y0, x1, y1] = box.map((v) => (Number.isFinite(Number(v)) ? Number(v) : 0));
 				const boxW = Math.max(0.01, x1 - x0);
 				const boxH = Math.max(0.01, y1 - y0);
 				const imgWidthPercent = (1 / boxW) * 100;
@@ -5050,12 +5050,12 @@ function initWallpanel() {
 
 				return `
 					<div class="${className}-crop-container" style="position: relative; overflow: hidden; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; ${style}">
-						<img src="${imgUrl}" alt="${altName}" class="${className}" style="position: absolute; width: ${imgWidthPercent}%; height: ${imgHeightPercent}%; left: ${imgLeftPercent}%; top: ${imgTopPercent}%; object-fit: fill; mix-blend-mode: ${blendMode}; filter: ${blendFilter}; pointer-events: none;">
+						<img src="${safeImgUrl}" alt="${altName}" class="${className}" style="position: absolute; width: ${imgWidthPercent}%; height: ${imgHeightPercent}%; left: ${imgLeftPercent}%; top: ${imgTopPercent}%; object-fit: fill; mix-blend-mode: ${blendMode}; filter: ${blendFilter}; pointer-events: none;">
 					</div>
 				`;
 			}
 			return `
-				<img src="${imgUrl}" alt="${altName}" class="${className}" style="max-width: 100%; max-height: 100%; object-fit: contain; mix-blend-mode: ${blendMode}; filter: ${blendFilter}; pointer-events: none; ${style}">
+				<img src="${safeImgUrl}" alt="${altName}" class="${className}" style="max-width: 100%; max-height: 100%; object-fit: contain; mix-blend-mode: ${blendMode}; filter: ${blendFilter}; pointer-events: none; ${style}">
 			`;
 		}
 
@@ -5124,7 +5124,7 @@ function initWallpanel() {
 			}
 			return template.replace(/\$\{([^}]+)\}|\$([a-zA-Z0-9_]+)/g, (match, p1, p2) => {
 				const key = (p1 || p2 || "").trim().toLowerCase();
-				if (context[key] !== undefined && context[key] !== null) {
+				if (Object.prototype.hasOwnProperty.call(context, key) && context[key] !== undefined && context[key] !== null) {
 					return escapeHtml(String(context[key]));
 				}
 				return match;
@@ -5146,7 +5146,7 @@ function initWallpanel() {
 			}
 
 			const isPortrait = window.innerHeight > window.innerWidth;
-			const cardOffset = forceCardOffset !== null ? forceCardOffset : (isPortrait ? "none" : this.getBirdnetCardOffset());
+			const cardOffset = forceCardOffset !== null ? forceCardOffset : isPortrait ? "none" : this.getBirdnetCardOffset();
 			const offsetClass = cardOffset === "left" ? " offset-left" : cardOffset === "right" ? " offset-right" : "";
 
 			const now = new Date();
@@ -5177,7 +5177,8 @@ function initWallpanel() {
 
 			const name = this.formatBirdnetTemplate(config.birdnet_main_text, context, escapeHtml(rawName) + ".");
 			const note = this.formatBirdnetTemplate(config.birdnet_sub_text, context, defaultNote);
-			const sciHtml = rawSci && config.birdnet_sub_text !== "none" ? `<div class="wp-birdnet-sci">${escapeHtml(rawSci)}</div>` : "";
+			const sciHtml =
+				rawSci && config.birdnet_sub_text !== "none" ? `<div class="wp-birdnet-sci">${escapeHtml(rawSci)}</div>` : "";
 			const noteHtml = note ? `<div class="wp-birdnet-note">${note}</div>` : "";
 
 			return `
@@ -5219,7 +5220,8 @@ function initWallpanel() {
 				}
 			}
 			if (config.style) {
-				const boxStyle = config.style["wallpanel-screensaver-info-box"] || config.style["wallpanel-screensaver-fixed-info-box"];
+				const boxStyle =
+					config.style["wallpanel-screensaver-info-box"] || config.style["wallpanel-screensaver-fixed-info-box"];
 				if (boxStyle) {
 					if (boxStyle.left && !boxStyle.right) return "left";
 					if (boxStyle.right && !boxStyle.left) return "right";
@@ -5242,7 +5244,8 @@ function initWallpanel() {
 				}
 			}
 			if (config.style) {
-				const boxStyle = config.style["wallpanel-screensaver-info-box"] || config.style["wallpanel-screensaver-fixed-info-box"];
+				const boxStyle =
+					config.style["wallpanel-screensaver-info-box"] || config.style["wallpanel-screensaver-fixed-info-box"];
 				if (boxStyle) {
 					if (boxStyle.bottom && !boxStyle.top) return "top";
 				}
@@ -5255,7 +5258,7 @@ function initWallpanel() {
 				const rect = this.infoBox.getBoundingClientRect();
 				const winH = window.innerHeight || 1080;
 				if (rect.height > 20) {
-					return (rect.height / winH) >= 0.60;
+					return rect.height / winH >= 0.6;
 				}
 			}
 			const cardCount = (config.cards ? config.cards.length : 0) + (config.badges ? config.badges.length : 0);
@@ -5268,10 +5271,10 @@ function initWallpanel() {
 				const winH = window.innerHeight || 1080;
 				if (rect.height > 40) {
 					const available = (winH - rect.height - 30) / winH;
-					return Math.min(0.80, Math.max(0.40, available));
+					return Math.min(0.8, Math.max(0.4, available));
 				}
 			}
-			return 0.70;
+			return 0.7;
 		}
 
 		getBirdnetCardOffset() {
@@ -5297,7 +5300,8 @@ function initWallpanel() {
 			}
 
 			if (config.style) {
-				const boxStyle = config.style["wallpanel-screensaver-info-box"] || config.style["wallpanel-screensaver-fixed-info-box"];
+				const boxStyle =
+					config.style["wallpanel-screensaver-info-box"] || config.style["wallpanel-screensaver-fixed-info-box"];
 				if (boxStyle) {
 					if (boxStyle.left && !boxStyle.right) return "right";
 					if (boxStyle.right && !boxStyle.left) return "left";
@@ -5314,11 +5318,12 @@ function initWallpanel() {
 			const total = speciesToShow.length;
 
 			const isPortrait = forcePortrait !== null ? forcePortrait : window.innerHeight > window.innerWidth;
-			const cardOffset = forceCardOffset !== null ? forceCardOffset : (isPortrait ? "none" : this.getBirdnetCardOffset());
+			const cardOffset = forceCardOffset !== null ? forceCardOffset : isPortrait ? "none" : this.getBirdnetCardOffset();
 			const offsetClass = cardOffset === "left" ? " offset-left" : cardOffset === "right" ? " offset-right" : "";
 			const slots = getOvalSlots(total, isPortrait);
 
-			const indices = total >= 4 ? [...Array(total - 1).keys()].map(i => i + 1).concat([0]) : [...Array(total).keys()];
+			const indices =
+				total >= 4 ? [...Array(total - 1).keys()].map((i) => i + 1).concat([0]) : [...Array(total).keys()];
 
 			const slotsHtml = indices
 				.map((idx) => {
@@ -5345,10 +5350,11 @@ function initWallpanel() {
 					const spName = escapeHtml(sp.name || "");
 					const isHero = idx === 0 && total >= 4;
 					const heroClass = isHero ? " wp-birdnet-hero-label" : "";
-					const labelOffset = isHero ? (slot.h * 0.46) : (slot.h * 0.44);
-					const labelY = slot.cy + labelOffset;
+					// Anchor to the drawn (clamped) box, not the requested centre
+					const labelY = slot.y + slot.h - slot.h * (isHero ? 0.04 : 0.06);
+					const labelX = slot.x + slot.w / 2;
 					return `
-						<div class="wp-birdnet-cluster-label${heroClass}" style="left: ${(slot.cx * 100).toFixed(2)}%; top: ${(labelY * 100).toFixed(2)}%;">
+						<div class="wp-birdnet-cluster-label${heroClass}" style="left: ${(labelX * 100).toFixed(2)}%; top: ${(labelY * 100).toFixed(2)}%;">
 							${spName}
 						</div>
 					`;
@@ -5370,8 +5376,18 @@ function initWallpanel() {
 			};
 			const defaultMainCaption = `${label} · heard today · ${dateStr} · ${speciesCount} species`;
 			const defaultSubCaption = "Historical plates watercolour after Audubon, Gould, Lear &amp; Broinowski.";
-			const mainCaption = this.formatBirdnetTemplate(config.birdnet_cluster_main || config.birdnet_main_text, clusterContext, defaultMainCaption);
-			const subCaption = this.formatBirdnetTemplate(config.birdnet_cluster_sub !== undefined && config.birdnet_cluster_sub !== "" ? config.birdnet_cluster_sub : config.birdnet_sub_text, clusterContext, defaultSubCaption);
+			const mainCaption = this.formatBirdnetTemplate(
+				config.birdnet_cluster_main || config.birdnet_main_text,
+				clusterContext,
+				defaultMainCaption
+			);
+			const subCaption = this.formatBirdnetTemplate(
+				config.birdnet_cluster_sub !== undefined && config.birdnet_cluster_sub !== ""
+					? config.birdnet_cluster_sub
+					: config.birdnet_sub_text,
+				clusterContext,
+				defaultSubCaption
+			);
 			const subCaptionHtml = subCaption ? `<div class="wp-birdnet-cluster-caption-sub">${subCaption}</div>` : "";
 
 			return `
@@ -5403,7 +5419,7 @@ function initWallpanel() {
 			const hasCardOverlap = isEnabled && cardSide !== "none";
 
 			const folioOnLeft = hasCardOverlap && cardSide === "left";
-			let scaleRatio = 0.70;
+			let scaleRatio = 0.7;
 			let vAlign = "bottom";
 
 			if (hasCardOverlap) {
@@ -5411,10 +5427,10 @@ function initWallpanel() {
 				if (cardSetting === "auto" || cardSetting === "true") {
 					scaleRatio = this.calculateSpreadFolioAutoRatio();
 				} else if (cardSetting === "fixed") {
-					scaleRatio = 0.70;
+					scaleRatio = 0.7;
 				} else {
 					const parsed = parseFloat(cardSetting);
-					scaleRatio = !isNaN(parsed) && parsed > 0.2 && parsed <= 1.0 ? parsed : 0.70;
+					scaleRatio = !isNaN(parsed) && parsed > 0.2 && parsed <= 1.0 ? parsed : 0.7;
 				}
 			}
 
@@ -5517,7 +5533,7 @@ function initWallpanel() {
 			const rawSci = species.sci || "";
 
 			const isPortrait = window.innerHeight > window.innerWidth;
-			const cardOffset = forceCardOffset !== null ? forceCardOffset : (isPortrait ? "none" : this.getBirdnetCardOffset());
+			const cardOffset = forceCardOffset !== null ? forceCardOffset : isPortrait ? "none" : this.getBirdnetCardOffset();
 			const offsetClass = cardOffset === "left" ? " offset-left" : cardOffset === "right" ? " offset-right" : "";
 
 			const now = new Date();
@@ -5913,14 +5929,17 @@ function initWallpanel() {
 		async updateMediaFromBirdnet(element) {
 			const mediaUrl = element.mediaUrl || "";
 			const match = mediaUrl.match(/^birdnet:\/\/([^/?]+)(?:\/([^?]+))?(?:\?idx=(\d+))?/);
-			const layout = match ? match[1] : config.birdnet_layout || "folio";
+			let layout = match ? match[1] : config.birdnet_layout || "folio";
 			const sci = match && match[2] ? decodeURIComponent(match[2]) : "";
 			const idx = match && match[3] ? parseInt(match[3], 10) : 0;
 
-			const allSpecies =
-				this.birdnetSpecies && this.birdnetSpecies.length ? this.birdnetSpecies : this.getBirdnetDemoData();
+			const allSpecies = this.birdnetSpecies || [];
+			if (!allSpecies.length) {
+				// Nothing to show: only the cluster layout renders an empty sheet safely
+				layout = "cluster";
+			}
 			let species = allSpecies.find((s) => s.sci === sci);
-			if (!species) {
+			if (!species && allSpecies.length) {
 				species = allSpecies[idx % allSpecies.length] || allSpecies[0];
 			}
 
@@ -6551,7 +6570,7 @@ function initWallpanel() {
 				if (!this.isPaused && !this.updatingMedia && switchMedia) {
 					this.switchActiveMedia("display_time_elapsed");
 				}
-				if (now - this.lastMediaListUpdate >= config.media_list_update_interval * 1000) {
+				if (now - this.lastMediaListUpdate >= getMediaListUpdateIntervalSeconds() * 1000) {
 					this.updateMediaList(null, true);
 				}
 				if (this.imageOneContainer.style.visibility != "visible") {

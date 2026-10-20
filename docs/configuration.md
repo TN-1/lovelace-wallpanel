@@ -56,6 +56,13 @@ You can set the following configuration parameters for every individual Home Ass
 | birdnet_local_path               | Local directory or URL path to check for bird artwork (e.g. `/media/local/birds/`, `/local/birds/`). Defaults to checking `/media/local/birds/` and `/local/birds/`. | `["/media/local/birds/", "/local/birds/"]` |
 | birdnet_plates                   | Inline dictionary mapping scientific binomials or common names to image URLs, local paths, or plate objects. | {} |
 | birdnet_plates_url               | Path or URL to a custom `plates.json` file (e.g. `/local/birds/plates.json`). See [Custom Plates](../examples/birdnet/README.md). |           |
+| birdnet_spread_cards             | How the `spread` layout avoids screensaver cards (`disabled`, `auto`, `fixed`, or a ratio from `0.2` to `1.0`). | auto      |
+| birdnet_blend_mode               | Blend mode for plate artwork (`auto`, `normal`, `multiply`). `auto` uses `normal` for PNG/WebP and `multiply` otherwise. | auto      |
+| birdnet_mat_color                | Mat colour around the plate (`same`, `dark`, `parchment`, `sage`, `forest`, `slate`, `ivory`, or any CSS colour). |           |
+| birdnet_main_text                | Template for the primary text of `folio`, `plate` and `spread`. Placeholders are HTML-escaped. See [Configurable Text](media-sources.md#configurable-text--templating). | `${name}.` |
+| birdnet_sub_text                 | Template for the secondary text of `folio`, `plate` and `spread`. `none` hides it.                      |           |
+| birdnet_cluster_main             | Template for the `cluster` main caption.                                                                |           |
+| birdnet_cluster_sub              | Template for the `cluster` sub caption.                                                                 |           |
 | force_load_media_with_fetch      | Enforce media loading through `fetch()` instead of setting the elements `src` attribute.               | false     |
 | image_url_entity                 | An entity of type 'input_text' in which the URL of the current screen saver image is stored. If browser_mod is installed, `${browser_id}` will be replaced with Browser ID (see [Browser Mod](browser-mod.md#placeholder-browser_id)). |        |
 | media_entity_load_unchanged      | Should a new image be fetched from the entity after the display time has expired, even if the entity's state remains unchanged? | true      |

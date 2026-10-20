@@ -295,7 +295,7 @@ wallpanel:
   birdnet_update_interval: 300             # Polling interval in seconds (default: 5 min)
 ```
 
-Until pointed at an active BirdNET-Go server (or when left unconfigured or set to `"demo"`), WallPanel runs a built-in **demo garden** populated with realistic birdsong detections and timestamps matching the current time of day.
+If the server cannot be reached or reports no species, WallPanel keeps showing the last species it received. Before the first successful fetch it shows an empty cluster sheet.
 
 ### Layouts
 
@@ -435,7 +435,7 @@ The following placeholders are dynamically interpolated when enclosed within `${
 | `${time}` / `${last}` | Timestamp of most recent detection | `14:02` |
 | `${first}` | Timestamp of initial detection today | `06:14` |
 | `${confidence}` | Confidence score of most recent detection | `94%` |
-| `${plate}` | Roman numeral plate index | `Pl. XXIII.` |
+| `${plate}` | Roman numeral plate index | `XXIII` |
 | `${label}` | Garden or station designation | `BACKYARD` |
 | `${date}` | Formatted calendar date | `Tue 20 Oct` |
 | `${species_count}` | Total unique species observed today | `12` |
