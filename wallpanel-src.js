@@ -732,8 +732,16 @@ function getBirdnetCss() {
 			margin-top: clamp(2px, 0.3vmin, 4px);
 		}
 		.wp-birdnet-cluster-mat {
-			background-color: var(--wp-birdnet-plate);
+			background-color: var(--wp-birdnet-mat);
 			padding: clamp(8px, 2vmin, 28px);
+		}
+		.wp-birdnet-cluster-mat.offset-right {
+			padding-left: clamp(470px, 26vw, 530px);
+			justify-content: flex-end;
+		}
+		.wp-birdnet-cluster-mat.offset-left {
+			padding-right: clamp(470px, 26vw, 530px);
+			justify-content: flex-start;
 		}
 		.wp-birdnet-cluster-card {
 			width: 100%;
@@ -748,9 +756,10 @@ function getBirdnetCss() {
 			display: flex;
 			flex-direction: column;
 			height: 100%;
+			width: 100%;
 			margin: 0;
-			border: 0.75px solid var(--wp-birdnet-border);
-			padding: clamp(10px, 2vmin, 24px);
+			border: none;
+			padding: 0;
 			box-sizing: border-box;
 		}
 		.wp-birdnet-cluster-vignette {
@@ -775,6 +784,10 @@ function getBirdnetCss() {
 			display: flex;
 			flex-direction: column;
 			background-color: var(--wp-birdnet-plate);
+			border: 1.5px solid var(--wp-birdnet-border);
+			box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), inset 0 0 40px rgba(0, 0, 0, 0.04);
+			padding: clamp(8px, 1.6vmin, 20px);
+			box-sizing: border-box;
 			transition: margin 0.3s ease;
 		}
 		.wp-birdnet-cluster-sheet.offset-left {
@@ -835,7 +848,7 @@ function getBirdnetCss() {
 			white-space: nowrap;
 			line-height: 1.1;
 			font-family: var(--wp-birdnet-sc, 'IM Fell English SC', 'Playfair Display', Georgia, serif);
-			font-size: clamp(8px, 1.05vmin, 12px);
+			font-size: clamp(8px, 1.1vmin, 13px);
 			letter-spacing: 0.08em;
 			text-transform: uppercase;
 			color: var(--wp-birdnet-ink);
@@ -843,9 +856,7 @@ function getBirdnetCss() {
 			z-index: 3;
 		}
 		.wp-birdnet-hero-label {
-			font-size: clamp(9px, 1.25vmin, 15px);
-			letter-spacing: 0.12em;
-			font-weight: 600;
+			/* Uniform typography across all specimen names */
 		}
 		.wp-birdnet-cluster-caption {
 			text-align: center;
@@ -1050,6 +1061,52 @@ function getBirdnetCss() {
 		}
 		.wp-birdnet-chart-cell-active {
 			background-color: rgba(28, 38, 38, 0.14);
+		}
+		.wp-birdnet-chart-mat {
+			background-color: var(--wp-birdnet-mat);
+			padding: clamp(8px, 2vmin, 28px);
+			width: 100%;
+			height: 100%;
+			box-sizing: border-box;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+		.wp-birdnet-chart-mat.offset-right {
+			padding-left: clamp(470px, 26vw, 530px);
+			justify-content: flex-end;
+		}
+		.wp-birdnet-chart-mat.offset-left {
+			padding-right: clamp(470px, 26vw, 530px);
+			justify-content: flex-start;
+		}
+		.wp-birdnet-chart-card {
+			background-color: #fcfbf7 !important;
+			color: #1c2626 !important;
+			border: 1.5px solid var(--wp-birdnet-border, #1c2626);
+			box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), inset 0 0 40px rgba(0, 0, 0, 0.04);
+			border-radius: 2px;
+			width: 100%;
+			height: 100%;
+			max-width: min(100%, calc((100vh - 40px) * 1.5));
+			aspect-ratio: 1.5;
+			display: flex;
+			flex-direction: column;
+			padding: clamp(8px, 1.8vmin, 22px);
+			box-sizing: border-box;
+		}
+		.wp-birdnet-chart-card.offset-right {
+			margin: 0 0 0 auto;
+		}
+		.wp-birdnet-chart-card.offset-left {
+			margin: 0 auto 0 0;
+		}
+		.wp-birdnet-chart-inner {
+			display: flex;
+			flex-direction: column;
+			height: 100%;
+			width: 100%;
+			box-sizing: border-box;
 		}
 	`;
 }
@@ -5244,7 +5301,7 @@ function initWallpanel() {
 			}
 			const hasCards = (config.cards && config.cards.length > 0) || (config.badges && config.badges.length > 0);
 			if (hasCards) {
-				return "right";
+				return "left";
 			}
 			return "none";
 		}
@@ -5303,28 +5360,10 @@ function initWallpanel() {
 				return "none";
 			}
 
-			// Check if infoBox or cards have explicit placement or position
-			if (this.infoContainer) {
-				const rect = this.infoContainer.getBoundingClientRect();
-				const winW = window.innerWidth || 1920;
-				if (rect.width > 50) {
-					const midX = rect.left + rect.width / 2;
-					if (midX < winW * 0.45) return "right";
-					if (midX > winW * 0.55) return "left";
-				}
-			}
-
-			if (config.style) {
-				const boxStyle =
-					config.style["wallpanel-screensaver-info-box"] || config.style["wallpanel-screensaver-fixed-info-box"];
-				if (boxStyle) {
-					if (boxStyle.left && !boxStyle.right) return "right";
-					if (boxStyle.right && !boxStyle.left) return "left";
-				}
-			}
-
-			// Default: WallPanel screensaver cards reside on the right flank, offset cluster sheet left
-			return "left";
+			const cardSide = this.getBirdnetCardSide();
+			// When cards are positioned on the left flank, shift artwork sheet to the right flank
+			// When cards are on the right flank, shift artwork sheet to the left flank
+			return cardSide === "left" ? "right" : "left";
 		}
 
 		renderBirdnetCluster(allSpecies = [], forcePortrait = null, forceCardOffset = null) {
@@ -5406,8 +5445,8 @@ function initWallpanel() {
 			const subCaptionHtml = subCaption ? `<div class="wp-birdnet-cluster-caption-sub">${subCaption}</div>` : "";
 
 			return `
-				<div class="wp-birdnet-mat wp-birdnet-cluster-mat">
-					<div class="wp-birdnet-plate-card wp-birdnet-cluster-card">
+				<div class="wp-birdnet-mat wp-birdnet-cluster-mat${offsetClass}">
+					<div class="wp-birdnet-plate-card wp-birdnet-cluster-card${offsetClass}">
 						<div class="wp-birdnet-cluster-inner">
 							<div class="wp-birdnet-cluster-sheet${offsetClass}">
 								<div class="wp-birdnet-oval-canvas">
@@ -5471,11 +5510,15 @@ function initWallpanel() {
 			`;
 		}
 
-		renderBirdnetChart(allSpecies = []) {
+		renderBirdnetChart(allSpecies = [], forceCardOffset = null) {
 			const label = escapeHtml(config.birdnet_label || "Backyard");
 			const now = new Date();
 			const dateStr = now.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 			const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+
+			const isPortrait = window.innerHeight > window.innerWidth;
+			const cardOffset = forceCardOffset !== null ? forceCardOffset : isPortrait ? "none" : this.getBirdnetCardOffset();
+			const offsetClass = cardOffset === "left" ? " offset-left" : cardOffset === "right" ? " offset-right" : "";
 
 			const headerHours = hours.map((h) => `<th>${h}</th>`).join("");
 			const rowsHtml = allSpecies
@@ -5509,9 +5552,9 @@ function initWallpanel() {
 				.join("");
 
 			return `
-				<div class="wp-birdnet-mat">
-					<div class="wp-birdnet-plate-card wp-birdnet-cluster-card">
-						<div class="wp-birdnet-cluster-inner">
+				<div class="wp-birdnet-mat wp-birdnet-chart-mat${offsetClass}">
+					<div class="wp-birdnet-plate-card wp-birdnet-chart-card${offsetClass}">
+						<div class="wp-birdnet-chart-inner">
 							<div class="wp-birdnet-header">
 								<span class="wp-birdnet-label">${label} — ACTIVITY LEDGER</span>
 								<span class="wp-birdnet-plate-num">${dateStr}</span>
