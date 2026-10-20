@@ -44,6 +44,17 @@ You can set the following configuration parameters for every individual Home Ass
 | disable_context_menu             | Disable context menu while screensaver is running?                                                     | false     |
 | show_images                      | Show images if screensaver is active?                                                                  | true      |
 | image_url                        | Fetch screensaver media files from this URL. See [Media Sources](media-sources.md) for details.        | See [Media Sources](media-sources.md) |
+| birdnet_url                      | Address of a BirdNET-Go server (e.g., `http://birdnet.local:8080`). See [BirdNET-Go](media-sources.md#birdnet-go--natural-history-plates) for details. |           |
+| birdnet_token                    | Bearer token for authenticating with BirdNET-Go (optional).                                             |           |
+| birdnet_layout                   | Layout style for BirdNET screensaver (`folio`, `cluster`, `spread`, `plate`, `chart`, `latest`, `auto`). | folio     |
+| birdnet_theme                    | Color theme for BirdNET plates (`sage`, `parchment`, `dark`).                                          | sage      |
+| birdnet_label                    | Header label or garden location tag.                                                                   | BACKYARD  |
+| birdnet_min_confidence           | Minimum confidence percentage threshold for detections (0-100).                                        | 50        |
+| birdnet_update_interval          | Interval in seconds to refresh BirdNET-Go detection data.                                               | 300       |
+| birdnet_order                    | Order of bird species displayed (`recent`, `count`, `name`, `random`).                                 | recent    |
+| birdnet_local_path               | Local directory or URL path to check for bird artwork (e.g. `/media/local/birds/`, `/local/birds/`). Defaults to checking `/media/local/birds/` and `/local/birds/`. | `["/media/local/birds/", "/local/birds/"]` |
+| birdnet_plates                   | Inline dictionary mapping scientific binomials or common names to image URLs, local paths, or plate objects. | {} |
+| birdnet_plates_url               | Path or URL to a custom `plates.json` file (e.g. `/local/birds/plates.json`). See [Custom Plates](../examples/birdnet/README.md). |           |
 | force_load_media_with_fetch      | Enforce media loading through `fetch()` instead of setting the elements `src` attribute.               | false     |
 | image_url_entity                 | An entity of type 'input_text' in which the URL of the current screen saver image is stored. If browser_mod is installed, `${browser_id}` will be replaced with Browser ID (see [Browser Mod](browser-mod.md#placeholder-browser_id)). |        |
 | media_entity_load_unchanged      | Should a new image be fetched from the entity after the display time has expired, even if the entity's state remains unchanged? | true      |

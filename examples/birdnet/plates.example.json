@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "description": "Custom plates mapping for Home Assistant Lovelace WallPanel BirdNET screensaver",
+  "plates": {
+    "Gymnorhina tibicen": {
+      "file": "australian_magpie.png",
+      "artist": "John Gould style"
+    },
+    "Trichoglossus moluccanus": {
+      "image": "/local/birds/rainbow_lorikeet.png",
+      "artist": "Edward Lear style"
+    },
+    "Cacatua galerita": {
+      "file": "sulphur_crested_cockatoo.png"
+    },
+    "Corvus mellori": {
+      "file": "little_raven.png"
+    },
+    "Eolophus roseicapilla": {
+      "file": "galah.png"
+    },
+    "Grallina cyanoleuca": {
+      "file": "magpie_lark.png"
+    },
+    "Rhipidura leucophrys": {
+      "file": "willie_wagtail.png"
+    },
+    "Spilopelia chinensis": {
+      "file": "spotted_dove.png"
+    },
+    "Zosterops lateralis": {
+      "file": "silvereye.png"
+    },
+    "Passer domesticus": {
+      "file": "Keulemans Onze vogels 3 50.jpg",
+      "box": [0.0586, 0.0993, 0.9273, 0.8909],
+      "artist": "John Gerrard Keulemans",
+      "source": "Keulemans, Onze vogels in huis en tuin (1869-76)"
+    }
+  }
+}

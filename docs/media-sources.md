@@ -274,3 +274,78 @@ For example:
 ```yaml
 image_url: embed+https://external.source.test/embed.pdf
 ```
+
+## BirdNET-Go & Natural History Plates
+
+WallPanel includes native screensaver rendering for [BirdNET-Go](https://github.com/tphakala/birdnet-go) bioacoustic bird monitors, inspired by [Backyard Birds / Specimen Sheet](https://github.com/dmellok/tesserae-widget-backyard-birds) by dmellok.
+
+It dynamically searches open public-domain archives (Wikimedia Commons and Biodiversity Heritage Library collections) for historical 18th- and 19th-century natural history plates (by Audubon, Gould, Lear, Broinowski, Keulemans, Wilson, and others) for any species worldwide, with automatic fallback to [iNaturalist](https://www.inaturalist.org/) open taxa photography if no historical plate exists.
+
+### Standalone Configuration
+
+```yaml
+wallpanel:
+  enabled: true
+  birdnet_url: "http://birdnet.local:8080" # BirdNET-Go server address
+  birdnet_layout: "folio"                  # folio, cluster, spread, plate, chart, latest, auto
+  birdnet_theme: "sage"                    # sage, parchment, dark
+  birdnet_label: "BACKYARD"                # Header tag / garden name
+  birdnet_order: "recent"                  # recent, count, name, random
+  birdnet_min_confidence: 50              # Minimum confidence percentage
+  birdnet_update_interval: 300             # Polling interval in seconds (default: 5 min)
+```
+
+Until pointed at an active BirdNET-Go server (or when left unconfigured or set to `"demo"`), WallPanel runs a built-in **demo garden** populated with realistic birdsong detections and timestamps matching the current time of day.
+
+### Layouts
+
+| Layout | Description |
+| --- | --- |
+| `folio` | **Victorian Folio Bookplate** (default). Double-bordered antique plate featuring the garden tag, Roman numeral plate numbering (`Pl. XXIII.`), centered bird artwork, small-caps common name, italic Latin binomial, and detection note (`Heard the thirty-second time to-day, last at 14:02.`). |
+| `cluster` | **Specimen Sheet**. Collage of birds heard today perched on branches with species count and date caption. Dynamically adapts between portrait and landscape aspect ratios. |
+| `spread` | **Dual-Frame Folio Spread**. Side-by-side spread displaying the specimen sheet on the left and the featured Victorian folio plate on the right (collapses to single plate in portrait mode). |
+| `plate` | **Classic Natural History Plate**. Clean, minimalist historical plate with antique titling. |
+| `chart` | **Day Activity Ledger**. 24-hour activity grid matrix showing hourly detection frequency per species. |
+| `latest` | Focuses specifically on the most recently detected visitor. |
+| `auto` | Intelligently cycles across individual species folio plates, periodically presenting the specimen sheet and activity chart. |
+
+### Color Themes
+
+- `sage` (default): Authentic slate sage grey-blue plate inside a warm ivory mat.
+- `parchment`: Warm antique cream book page with sepia inking.
+- `dark`: Deep graphite slate for low-light or OLED displays.
+
+### Artwork Resolution Hierarchy
+
+WallPanel resolves artwork through an automated fallback pipeline:
+
+1. **Inline Dashboard Overrides (`birdnet_plates`)**:
+   Map species directly in dashboard YAML using local file paths, full HTTP/HTTPS URLs, or Wikimedia Commons file identifiers:
+   ```yaml
+   wallpanel:
+     birdnet_plates:
+       # Direct HTTPS URL string
+       "Corvus mellori": "https://example.com/birds/little_raven.jpg"
+       # Full object with artist attribution, custom crop box, and remote URL
+       "Australian Magpie":
+         file: "https://upload.wikimedia.org/wikipedia/commons/a/a2/Gymnorhina_tibicen.jpg"
+         artist: "John Gould"
+         box: [0.1, 0.05, 0.9, 0.95]
+       # Local Home Assistant media or www path
+       "Galah": "/media/local/birds/Galah.jpeg"
+       # Bare filename resolved against active local bird path
+       "Willie Wagtail":
+         file: "WillieWagtail.jpeg"
+   ```
+
+2. **Custom or Auto-discovered Manifest (`plates.json`)**:
+   If `birdnet_plates_url` is specified, or if `/local/birds/plates.json` or `/media/local/birds/plates.json` exists, WallPanel loads species mappings and crop boxes automatically.
+
+3. **Zero-Configuration Local Discovery (Convention over Configuration)**:
+   Users can simply drop JPEG, PNG, or WebP images into Home Assistant's `/config/www/birds/` (accessible at `/local/birds/`) or `/media/birds/` (accessible at `/media/local/birds/`).
+   WallPanel tests standard naming conventions automatically:
+   - PascalCase common name: `AustralianMagpie.jpeg`, `LittleRaven.jpeg`, `Magpie-lark.jpeg`
+   - Scientific binomial: `Corvus_mellori.jpeg`, `Gymnorhina_tibicen.jpeg`
+
+4. **Dynamic Remote Search (Wikimedia Commons & iNaturalist)**:
+   If no local image exists for a detected visitor, WallPanel automatically queries Wikimedia Commons for public-domain natural history plates and watercolors, falling back to iNaturalist open taxa photography if no plate is cataloged.

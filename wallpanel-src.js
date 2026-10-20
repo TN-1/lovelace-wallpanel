@@ -116,6 +116,15 @@ const defaultConfig = {
 	badges: [],
 	cards: [],
 	views: [],
+	birdnet_url: "",
+	birdnet_token: "",
+	birdnet_plates_url: "",
+	birdnet_layout: "folio",
+	birdnet_theme: "sage",
+	birdnet_label: "BACKYARD",
+	birdnet_min_confidence: 50,
+	birdnet_update_interval: 300,
+	birdnet_order: "recent",
 	content_interaction: false,
 	profile: "",
 	profile_entity: "",
@@ -217,6 +226,901 @@ const classStyles = {
 };
 
 const mediaInfoCache = new Map();
+const birdnetImageCache = new Map();
+
+function escapeHtml(str) {
+	return String(str == null ? "" : str).replace(
+		/[&<>"']/g,
+		(c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+	);
+}
+
+function toRoman(num) {
+	if (!num || num < 1) return "I";
+	const lookup = [
+		["M", 1000],
+		["CM", 900],
+		["D", 500],
+		["CD", 400],
+		["C", 100],
+		["XC", 90],
+		["L", 50],
+		["XL", 40],
+		["X", 10],
+		["IX", 9],
+		["V", 5],
+		["IV", 4],
+		["I", 1]
+	];
+	let roman = "";
+	for (const [letter, value] of lookup) {
+		while (num >= value) {
+			roman += letter;
+			num -= value;
+		}
+	}
+	return roman;
+}
+
+const ORDINAL_WORDS = [
+	"",
+	"first",
+	"second",
+	"third",
+	"fourth",
+	"fifth",
+	"sixth",
+	"seventh",
+	"eighth",
+	"ninth",
+	"tenth",
+	"eleventh",
+	"twelfth",
+	"thirteenth",
+	"fourteenth",
+	"fifteenth",
+	"sixteenth",
+	"seventeenth",
+	"eighteenth",
+	"nineteenth"
+];
+const TENS_WORDS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+const TENTH_WORDS = [
+	"",
+	"",
+	"twentieth",
+	"thirtieth",
+	"fortieth",
+	"fiftieth",
+	"sixtieth",
+	"seventieth",
+	"eightieth",
+	"ninetieth"
+];
+
+function formatOrdinalWords(n) {
+	if (!n || n < 1) return "";
+	if (n <= 19) return ORDINAL_WORDS[n];
+	if (n < 100) {
+		const tens = Math.floor(n / 10);
+		const units = n % 10;
+		if (units === 0) return TENTH_WORDS[tens];
+		return `${TENS_WORDS[tens]}-${ORDINAL_WORDS[units]}`;
+	}
+	return `${n}th`;
+}
+
+function getOvalSlots(n, isPortrait = false) {
+	function at(cx, cy, w, h) {
+		const x = Math.min(Math.max(cx - w / 2, 0.0), 1 - w);
+		const y = Math.min(Math.max(cy - h / 2, 0.0), 1 - h);
+		return { x, y, w, h, cx, cy };
+	}
+
+	if (n <= 1) {
+		return [at(0.5, 0.44, 0.60, 0.65)];
+	}
+	if (n === 2) {
+		if (isPortrait) {
+			return [at(0.5, 0.28, 0.65, 0.38), at(0.5, 0.66, 0.65, 0.38)];
+		}
+		return [at(0.28, 0.44, 0.38, 0.65), at(0.68, 0.44, 0.38, 0.65)];
+	}
+	if (n === 3) {
+		const ring = 3;
+		const rx = isPortrait ? 0.26 : 0.30;
+		const ry = isPortrait ? 0.28 : 0.24;
+		const w = isPortrait ? 0.30 : 0.22;
+		const h = isPortrait ? 0.30 : 0.26;
+		const slots = [];
+		for (let i = 0; i < ring; i++) {
+			const a = (-90 + (360 * i) / ring) * (Math.PI / 180);
+			slots.push(at(0.5 + rx * Math.cos(a), 0.44 + ry * Math.sin(a), w, h));
+		}
+		return slots;
+	}
+
+	// n >= 4: Busiest hero bird in center + tight, harmonious Victorian oval vignette
+	const ring = n - 1;
+	const rx = isPortrait ? 0.33 : 0.35;
+	const ry = isPortrait ? 0.35 : 0.32;
+	const cyCenter = 0.44;
+	const heroW = 0.34;
+	const heroH = 0.36;
+	const slotW = 0.19;
+	const slotH = 0.19;
+
+	const centre = [at(0.5, cyCenter, heroW, heroH)];
+	const slots = [];
+	for (let i = 0; i < ring; i++) {
+		const a = (-90 + (360 * i) / ring) * (Math.PI / 180);
+		slots.push(at(0.5 + rx * Math.cos(a), cyCenter + ry * Math.sin(a), slotW, slotH));
+	}
+	return centre.concat(slots);
+}
+
+const probedUrlCache = new Map();
+
+function probeImageUrl(url, timeoutMs = 1500) {
+	if (probedUrlCache.has(url)) {
+		return Promise.resolve(probedUrlCache.get(url));
+	}
+	return new Promise((resolve) => {
+		if (typeof Image !== "undefined") {
+			let finished = false;
+			const img = new Image();
+			const timer = setTimeout(() => {
+				if (!finished) {
+					finished = true;
+					img.src = "";
+					probedUrlCache.set(url, false);
+					resolve(false);
+				}
+			}, timeoutMs);
+
+			img.onload = () => {
+				if (!finished) {
+					finished = true;
+					clearTimeout(timer);
+					probedUrlCache.set(url, true);
+					resolve(true);
+				}
+			};
+
+			img.onerror = () => {
+				if (!finished) {
+					finished = true;
+					clearTimeout(timer);
+					probedUrlCache.set(url, false);
+					resolve(false);
+				}
+			};
+
+			img.src = url;
+		} else {
+			fetch(url, { method: "HEAD" })
+				.then((r) => {
+					const ok = r.ok;
+					probedUrlCache.set(url, ok);
+					resolve(ok);
+				})
+				.catch(() => {
+					probedUrlCache.set(url, false);
+					resolve(false);
+				});
+		}
+	});
+}
+
+function getBirdnetCandidateFilenames(sciName, commonName, vettedFile = "") {
+	const names = new Set();
+	if (vettedFile) {
+		names.add(vettedFile);
+	}
+	if (commonName) {
+		const trimmed = commonName.trim();
+		// PascalCase without spaces: "Little Raven" -> "LittleRaven", "Magpie-lark" -> "Magpie-lark"
+		const noSpaces = trimmed.replace(/\s+/g, "");
+		names.add(noSpaces);
+		if (noSpaces.includes("-")) {
+			names.add(noSpaces.replace(/-/g, ""));
+		}
+		const pascal = trimmed.replace(/(?:^|[\s_])+(\w)/g, (_, c) => c.toUpperCase());
+		names.add(pascal);
+		names.add(trimmed.toLowerCase().replace(/[\s_]+/g, "-"));
+		names.add(trimmed.toLowerCase().replace(/[\s-]+/g, "_"));
+	}
+	if (sciName) {
+		const trimmedSci = sciName.trim();
+		names.add(trimmedSci.replace(/\s+/g, "_"));
+		names.add(trimmedSci.replace(/\s+/g, ""));
+		names.add(trimmedSci.toLowerCase().replace(/\s+/g, "_"));
+	}
+
+	const extensions = [".jpeg", ".jpg", ".png", ".webp"];
+	const results = [];
+	for (const name of names) {
+		if (!name) continue;
+		if (/\.(jpe?g|png|webp|svg)$/i.test(name)) {
+			results.push(name);
+		} else {
+			for (const ext of extensions) {
+				results.push(`${name}${ext}`);
+			}
+		}
+	}
+	return Array.from(new Set(results));
+}
+
+const BIRDNET_VETTED_PLATES = {
+	"Passer domesticus": { file: "HouseSparrow.jpeg", artist: "Watercolour after Audubon & Gould", common: "House Sparrow" },
+	"Turdus merula": { file: "EurasianBlackbird.jpeg", artist: "Watercolour after Audubon & Gould", common: "Eurasian Blackbird" },
+	"Spilopelia chinensis": { file: "SpottedDove.jpeg", artist: "Watercolour after Audubon & Gould", common: "Spotted Dove" },
+	"Rhipidura leucophrys": { file: "WillieWagtail.jpeg", artist: "Watercolour after Audubon & Gould", common: "Willie Wagtail" },
+	"Corvus mellori": { file: "LittleRaven.jpeg", artist: "Watercolour after Audubon & Gould", common: "Little Raven" },
+	"Gymnorhina tibicen": { file: "AustralianMagpie.jpeg", artist: "Watercolour after Audubon & Gould", common: "Australian Magpie" },
+	"Chloris chloris": { file: "EuropeanGreenfinch.jpeg", artist: "Watercolour after Audubon & Gould", common: "European Greenfinch" },
+	"Phylidonyris novaehollandiae": { file: "NewHollandHoneyeater.jpeg", artist: "Watercolour after Audubon & Gould", common: "New Holland Honeyeater" },
+	"Grallina cyanoleuca": { file: "Magpie-lark.jpeg", artist: "Watercolour after Audubon & Gould", common: "Magpie-lark" },
+	"Eolophus roseicapilla": { file: "Galah.jpeg", artist: "Watercolour after Audubon & Gould", common: "Galah" },
+	"Corvus coronoides": { file: "AustralianRaven.jpeg", artist: "Watercolour after Audubon & Gould", common: "Australian Raven" },
+	"Hirundo rustica": { file: "BarnSwallow.jpeg", artist: "Watercolour after Audubon & Gould", common: "Barn Swallow" },
+	"Zosterops lateralis": { file: "Silvereye.jpeg", artist: "Watercolour after Audubon & Gould", common: "Silvereye" },
+	"Haliastur sphenurus": { file: "WhistlingKite.jpeg", artist: "Watercolour after Audubon & Gould", common: "Whistling Kite" },
+	"Manorina melanocephala": { file: "NoisyMiner.jpeg", artist: "Watercolour after Audubon & Gould", common: "Noisy Miner" },
+	"Vanellus miles": { file: "MaskedLapwing.jpeg", artist: "Watercolour after Audubon & Gould", common: "Masked Lapwing" },
+	"Ptilotula penicillata": { file: "White-plumedHoneyeater.jpeg", artist: "Watercolour after Audubon & Gould", common: "White-plumedHoneyeater" },
+	"Sturnus vulgaris": { file: "CommonStarling.jpeg", artist: "Watercolour after Audubon & Gould", common: "Common Starling" },
+	"Ninox boobook": { file: "SouthernBoobook.jpeg", artist: "Watercolour after Audubon & Gould", common: "Southern Boobook" },
+	"Carduelis carduelis": { file: "EuropeanGoldfinch.jpeg", artist: "Watercolour after Audubon & Gould", common: "European Goldfinch" },
+	"Manorina flavigula": { file: "Yellow-throatedMiner.jpeg", artist: "Watercolour after Audubon & Gould", common: "Yellow-throatedMiner" },
+	"Ocyphaps lophotes": { file: "CrestedPigeon.jpeg", artist: "Watercolour after Audubon & Gould", common: "Crested Pigeon" },
+	"Coracina novaehollandiae": { file: "Black-facedCuckooshrike.jpeg", artist: "Watercolour after Audubon & Gould", common: "Black-faced Cuckooshrike" },
+	"Alauda arvensis": { file: "EurasianSkylark.jpeg", artist: "Watercolour after Audubon & Gould", common: "Eurasian Skylark" },
+	"Acanthorhynchus tenuirostris": { file: "EasternSpinebill.jpeg", artist: "Watercolour after Audubon & Gould", common: "Eastern Spinebill" },
+	"Cacatua sanguinea": { file: "LittleCorella.jpeg", artist: "Watercolour after Audubon & Gould", common: "Little Corella" },
+	"Podargus strigoides": { file: "TawnyFrogmouth.jpeg", artist: "Watercolour after Audubon & Gould", common: "Tawny Frogmouth" },
+	"Fulica atra": { file: "EurasianCoot.jpeg", artist: "Watercolour after Audubon & Gould", common: "Eurasian Coot" },
+	"Columba livia": { file: "RockDove.jpeg", artist: "Watercolour after Audubon & Gould", common: "Rock Dove" },
+	"Spilopelia senegalensis": { file: "LaughingDove.jpeg", artist: "Watercolour after Audubon & Gould", common: "Laughing Dove" },
+	"Pachycephala rufiventris": { file: "RufousWhistler.jpeg", artist: "Watercolour after Audubon & Gould", common: "Rufous Whistler" },
+	"Chalcites basalis": { file: "Horsfield'sBronze-Cuckoo.jpeg", artist: "Watercolour after Audubon & Gould", common: "Horsfield's Bronze-Cuckoo" },
+	"Anthochaera carunculata": {
+		file: "Anthochaera carunculata - 1782-1825 - Print - Iconographia Zoologica - Special Collections University of Amsterdam - UBA01 IZ19200045.tif",
+		box: [0.6391,0.2562,0.9484,0.693],
+		artist: "",
+		source: "Iconographia Zoologica (Artis Library)"
+	},
+	"Bubo virginianus": {
+		file: "61 Great Horned Owl.jpg",
+		box: [0.0449,0.1265,0.915,0.8764],
+		artist: "John James Audubon",
+		source: "Audubon, The Birds of America"
+	},
+	"Cacatua galerita": {
+		file: "Edward Lear - Plyctolophus Galeritus. Greater Sulphur-crested Cockatoo. - Google Art Project.jpg",
+		box: [0.0657,0.0644,0.9431,0.9495],
+		artist: "Edward Lear",
+		source: "Lear, Illustrations of the Family of Psittacidae (1832)"
+	},
+	"Cardinalis cardinalis": {
+		file: "159 Cardinal Grosbeak.jpg",
+		box: [0.2967,0.3209,0.7211,0.678],
+		artist: "John James Audubon",
+		source: "Audubon, The Birds of America"
+	},
+	"Chloris chloris": {
+		file: "Emberiza chloris - 1753-1834 - Print - Iconographia Zoologica - Special Collections University of Amsterdam - UBA01 IZA1000262.tif",
+		box: [0.2178,0.2037,0.7593,0.6824],
+		artist: "Isaac van Haastert",
+		source: "Iconographia Zoologica (Artis Library)"
+	},
+	"Columba palumbus": {
+		file: "Keulemans Onze vogels 1 48.jpg",
+		box: [0.0264,0.0449,0.9663,0.8933],
+		artist: "John Gerrard Keulemans",
+		source: "Keulemans, Onze vogels in huis en tuin (1869-76)"
+	},
+	"Corvus brachyrhynchos": {
+		file: "156 American Crow.jpg",
+		box: [0.0631,0.0405,0.939,0.9454],
+		artist: "John James Audubon",
+		source: "Audubon, The Birds of America"
+	},
+	"Corvus corone": {
+		file: "Corvus corone - 1790-1796 - Print - Iconographia Zoologica - Special Collections University of Amsterdam - UBA01 IZ15700215.tif",
+		box: [0.0751,0.1563,0.9463,0.83],
+		artist: "François-Nicolas Martinet",
+		source: "Iconographia Zoologica (Artis Library)"
+	},
+	"Cracticus torquatus": {
+		file: "The birds of Australia (16879357218).jpg",
+		box: [0.052,0.0775,0.9121,0.9186],
+		artist: "Broinowski, Gracius J.",
+		source: "Gould, The Birds of Australia"
+	},
+	"Cyanistes caeruleus": {
+		file: "GouldBirdsEuropeIIIBlue Tit.jpg",
+		box: [0.3002,0.2362,0.6853,0.7232],
+		artist: "J and E Gould  E Lear",
+		source: "Gould, The Birds of Europe"
+	},
+	"Cyanocitta cristata": {
+		file: "102 Blue Jay.jpg",
+		box: [0.1703,0.2368,0.8094,0.79],
+		artist: "John James Audubon",
+		source: "Audubon, The Birds of America"
+	},
+	"Dacelo novaeguineae": {
+		file: "Dacelo gigas - 1820-1863 - Print - Iconographia Zoologica - Special Collections University of Amsterdam - UBA01 IZ16800175.tif",
+		box: [0.2078,0.179,0.775,0.8082],
+		artist: "",
+		source: "Iconographia Zoologica (Artis Library)"
+	},
+	"Dryobates pubescens": {
+		file: "112 Downy Woodpecker.jpg",
+		box: [0.1702,0.1796,0.7657,0.7993],
+		artist: "John James Audubon",
+		source: "Audubon, The Birds of America"
+	},
+	"Erithacus rubecula": {
+		file: "GouldBirdsEuropeIIRobin.jpg",
+		box: [0.2142,0.1952,0.8613,0.7157],
+		artist: "J and E Gould E Lear",
+		source: "Gould, The Birds of Europe"
+	},
+	"Fringilla coelebs": {
+		file: "The birds of Europe (1837) (14749620464).jpg",
+		box: [0.0156,0.0093,0.9834,0.9901],
+		artist: "John Gould    /    Elizabeth Gould    /    Charles Joseph Hullmandel",
+		source: "Gould, The Birds of Europe"
+	},
+	"Gymnorhina tibicen": {
+		file: "The birds of Australia (16880930029).jpg",
+		box: [0.0472,0.092,0.9212,0.8906],
+		artist: "Broinowski, Gracius J.",
+		source: "Gould, The Birds of Australia"
+	},
+	"Junco hyemalis": {
+		file: "13 Snow Bird.jpg",
+		box: [0.3558,0.3129,0.7176,0.6687],
+		artist: "John James Audubon",
+		source: "Audubon, The Birds of America"
+	},
+	"Melospiza melodia": {
+		file: "25 Song Sparrow.jpg",
+		box: [0.3286,0.3215,0.7136,0.6348],
+		artist: "John James Audubon",
+		source: "Audubon, The Birds of America"
+	},
+	"Ninox boobook": {
+		file: "The birds of Australia (16444746064).jpg",
+		box: [0.0259,0.0938,0.8956,0.8922],
+		artist: "Broinowski, Gracius J.",
+		source: "Gould, The Birds of Australia"
+	},
+	"Pardalotus punctatus": {
+		file: "The birds of Australia (17041184346).jpg",
+		box: [0.1383,0.1344,0.8556,0.8439],
+		artist: "Broinowski, Gracius J.",
+		source: "Gould, The Birds of Australia"
+	},
+	"Parus major": {
+		file: "Coloured figures of the birds of the British Islands - issued by Lord Lilford (8291316278).jpg",
+		box: [0.0939,0.0366,0.904,0.9397],
+		artist: "Keulemans, J. G.; Lilford, Thomas Littleton Powys; Newton, Alfred; Salvin, Osbert; Thorburn, Archibald",
+		source: "Lilford, Coloured Figures of the Birds of the British Islands"
+	},
+	"Passer domesticus": {
+		file: "Keulemans Onze vogels 3 50.jpg",
+		box: [0.0586,0.0993,0.9273,0.8909],
+		artist: "John Gerrard Keulemans",
+		source: "Keulemans, Onze vogels in huis en tuin (1869-76)"
+	},
+	"Poecile atricapillus": {
+		file: "160 Black-capped Titmouse.jpg",
+		box: [0.3082,0.3046,0.7262,0.6965],
+		artist: "John James Audubon",
+		source: "Audubon, The Birds of America"
+	},
+	"Strix aluco": {
+		file: "Syrnium Aluco.jpg",
+		box: [0.0369,0.0972,0.9693,0.8739],
+		artist: "John Gould",
+		source: "Gould, The Birds of Europe"
+	},
+	"Trichoglossus moluccanus": {
+		file: "Trichoglossus novae hollandiae - 1796-1808 - Print - Iconographia Zoologica - Special Collections University of Amsterdam - UBA01 IZ18500211.tif",
+		box: [0.0569,0.0903,0.8915,0.8322],
+		artist: "Jacques Barraband",
+		source: "Iconographia Zoologica (Artis Library)"
+	},
+	"Troglodytes troglodytes": {
+		file: "GouldBirdsEuropeIIWren.jpg",
+		box: [0.3784,0.3167,0.7198,0.7318],
+		artist: "J and E Gould E Lear",
+		source: "Gould, The Birds of Europe"
+	},
+	"Turdus merula": {
+		file: "GouldBirdsEuropeIIBlackbird.jpg",
+		box: [0.1479,0.1022,0.9417,0.7669],
+		artist: "J and E Gould E Lear",
+		source: "Gould, The Birds of Europe"
+	},
+	"Turdus migratorius": {
+		file: "131 American Robin.jpg",
+		box: [0.0446,0.0454,0.969,0.9423],
+		artist: "John James Audubon",
+		source: "Audubon, The Birds of America"
+	},
+	"Zenaida macroura": {
+		file: "17 Carolina Turtle Dove.jpg",
+		box: [0.1466,0.1912,0.8679,0.8324],
+		artist: "John James Audubon",
+		source: "Audubon, The Birds of America"
+	},
+};
+
+const BIRDNET_DEMO_SPECIES = [
+	{
+		name: "Rainbow Lorikeet",
+		sci: "Trichoglossus moluccanus",
+		count: 32,
+		conf: 0.94,
+		last: "14:02",
+		first: "06:15",
+		hourly: [0, 0, 0, 0, 0, 0, 2, 5, 8, 4, 3, 2, 4, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	{
+		name: "Australian Magpie",
+		sci: "Gymnorhina tibicen",
+		count: 24,
+		conf: 0.92,
+		last: "13:45",
+		first: "05:40",
+		hourly: [0, 0, 0, 0, 0, 3, 6, 4, 2, 1, 3, 2, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	{
+		name: "Sulphur-crested Cockatoo",
+		sci: "Cacatua galerita",
+		count: 18,
+		conf: 0.95,
+		last: "12:10",
+		first: "07:20",
+		hourly: [0, 0, 0, 0, 0, 0, 0, 4, 6, 3, 2, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	{
+		name: "Superb Fairywren",
+		sci: "Malurus cyaneus",
+		count: 15,
+		conf: 0.88,
+		last: "11:55",
+		first: "06:45",
+		hourly: [0, 0, 0, 0, 0, 0, 3, 5, 2, 2, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	{
+		name: "Eurasian Blackbird",
+		sci: "Turdus merula",
+		count: 12,
+		conf: 0.89,
+		last: "10:30",
+		first: "05:25",
+		hourly: [0, 0, 0, 0, 0, 4, 3, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	{
+		name: "Laughing Kookaburra",
+		sci: "Dacelo novaeguineae",
+		count: 9,
+		conf: 0.96,
+		last: "09:15",
+		first: "05:50",
+		hourly: [0, 0, 0, 0, 0, 3, 4, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	{
+		name: "Northern Cardinal",
+		sci: "Cardinalis cardinalis",
+		count: 8,
+		conf: 0.91,
+		last: "08:40",
+		first: "06:10",
+		hourly: [0, 0, 0, 0, 0, 0, 2, 4, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	{
+		name: "Blue Jay",
+		sci: "Cyanocitta cristata",
+		count: 7,
+		conf: 0.93,
+		last: "08:15",
+		first: "06:30",
+		hourly: [0, 0, 0, 0, 0, 0, 1, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	}
+];
+
+function getBirdnetCss() {
+	return `
+		@import url('https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap');
+		.wallpanel-birdnet-container {
+			width: 100%;
+			height: 100%;
+			position: absolute;
+			top: 0;
+			left: 0;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			box-sizing: border-box;
+			overflow: hidden;
+			pointer-events: none;
+			font-family: var(--wp-birdnet-serif, "IM Fell English", "Playfair Display", Georgia, serif);
+			--wp-birdnet-sc: 'IM Fell English SC', 'Playfair Display', Georgia, serif;
+			--wp-birdnet-serif: 'IM Fell English', 'Playfair Display', Georgia, serif;
+			--wp-birdnet-mat: #ebe6da;
+			--wp-birdnet-plate: #7f908f;
+			--wp-birdnet-ink: #1c2626;
+			--wp-birdnet-ink-muted: #384948;
+			--wp-birdnet-border: #1c2626;
+		}
+		.wallpanel-birdnet-container.theme-parchment {
+			--wp-birdnet-mat: #e8e2d2;
+			--wp-birdnet-plate: #f9f5ec;
+			--wp-birdnet-ink: #2b2520;
+			--wp-birdnet-ink-muted: #5c5248;
+			--wp-birdnet-border: #3b322a;
+		}
+		.wallpanel-birdnet-container.theme-dark {
+			--wp-birdnet-mat: #141718;
+			--wp-birdnet-plate: #1d2424;
+			--wp-birdnet-ink: #e2e8e7;
+			--wp-birdnet-ink-muted: #95a7a5;
+			--wp-birdnet-border: #465554;
+		}
+		.wp-birdnet-mat {
+			width: 100%;
+			height: 100%;
+			background-color: var(--wp-birdnet-mat);
+			box-sizing: border-box;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			padding: clamp(12px, 3.5vmin, 48px);
+			overflow: hidden;
+		}
+		.wp-birdnet-plate-card {
+			background-color: var(--wp-birdnet-plate);
+			color: var(--wp-birdnet-ink);
+			border: 1.5px solid var(--wp-birdnet-border);
+			box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), inset 0 0 40px rgba(0, 0, 0, 0.04);
+			box-sizing: border-box;
+			display: flex;
+			flex-direction: column;
+			position: relative;
+			max-width: 100%;
+			max-height: 100%;
+		}
+		.wp-birdnet-folio-card {
+			aspect-ratio: 0.68;
+			height: 100%;
+			max-width: 90vw;
+		}
+		.wp-birdnet-inner-border {
+			border: 0.75px solid var(--wp-birdnet-border);
+			margin: clamp(3px, 0.6vmin, 8px);
+			padding: clamp(8px, 1.5vmin, 20px);
+			box-sizing: border-box;
+			display: flex;
+			flex-direction: column;
+			height: calc(100% - clamp(6px, 1.2vmin, 16px));
+			position: relative;
+		}
+		.wp-birdnet-header {
+			display: flex;
+			justify-content: space-between;
+			align-items: baseline;
+			font-size: clamp(9px, 1.3vmin, 15px);
+			letter-spacing: 2.5px;
+			text-transform: uppercase;
+			font-weight: 600;
+			color: var(--wp-birdnet-ink);
+			padding-bottom: clamp(4px, 0.8vmin, 10px);
+			border-bottom: 0.5px solid rgba(28, 38, 38, 0.15);
+		}
+		.wp-birdnet-artwork-wrapper {
+			flex: 1;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			overflow: hidden;
+			padding: clamp(6px, 1.5vmin, 24px);
+		}
+		.wp-birdnet-artwork {
+			max-width: 100%;
+			max-height: 100%;
+			object-fit: contain;
+			mix-blend-mode: multiply;
+			filter: contrast(1.06) brightness(1.02) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.12));
+		}
+		.wp-birdnet-artwork-crop-container {
+			position: relative;
+			overflow: hidden;
+			width: 100%;
+			height: 100%;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+		.wp-birdnet-footer {
+			text-align: center;
+			padding-top: clamp(6px, 1.2vmin, 16px);
+			border-top: 0.5px solid rgba(28, 38, 38, 0.15);
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			gap: clamp(2px, 0.4vmin, 6px);
+		}
+		.wp-birdnet-name {
+			font-size: clamp(14px, 2.4vmin, 30px);
+			font-weight: 700;
+			letter-spacing: 3px;
+			text-transform: uppercase;
+			font-variant: small-caps;
+			color: var(--wp-birdnet-ink);
+			line-height: 1.15;
+		}
+		.wp-birdnet-sci {
+			font-size: clamp(11px, 1.5vmin, 18px);
+			font-style: italic;
+			letter-spacing: 1px;
+			color: var(--wp-birdnet-ink-muted);
+		}
+		.wp-birdnet-note {
+			font-size: clamp(9px, 1.2vmin, 14px);
+			font-style: italic;
+			color: var(--wp-birdnet-ink-muted);
+			margin-top: clamp(2px, 0.3vmin, 4px);
+		}
+		.wp-birdnet-cluster-mat {
+			background-color: var(--wp-birdnet-plate);
+			padding: clamp(8px, 2vmin, 28px);
+		}
+		.wp-birdnet-cluster-card {
+			width: 100%;
+			height: 100%;
+			max-width: 100%;
+			max-height: 100%;
+			border: none;
+			box-shadow: none;
+			background-color: transparent;
+		}
+		.wp-birdnet-cluster-inner {
+			display: flex;
+			flex-direction: column;
+			height: 100%;
+			margin: 0;
+			border: 0.75px solid var(--wp-birdnet-border);
+			padding: clamp(10px, 2vmin, 24px);
+			box-sizing: border-box;
+		}
+		.wp-birdnet-cluster-vignette {
+			flex: 1;
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			align-items: center;
+			gap: clamp(4px, 1.2vmin, 14px);
+			width: 100%;
+			overflow: hidden;
+			padding: clamp(4px, 0.8vmin, 10px);
+			box-sizing: border-box;
+		}
+		.wp-birdnet-cluster-sheet {
+			position: relative;
+			margin: 0 auto;
+			width: 100%;
+			height: 100%;
+			max-width: min(100%, calc((100vh - 40px) * 1.25));
+			aspect-ratio: 1.25;
+			display: flex;
+			flex-direction: column;
+			background-color: var(--wp-birdnet-plate);
+		}
+		@media (max-aspect-ratio: 1) {
+			.wp-birdnet-cluster-sheet {
+				max-width: 100%;
+				aspect-ratio: 0.85;
+			}
+		}
+		.wp-birdnet-oval-canvas {
+			position: relative;
+			flex: 1;
+			width: 100%;
+			min-height: 0;
+			overflow: visible;
+			background-color: var(--wp-birdnet-plate);
+		}
+		.wp-birdnet-oval-slot {
+			position: absolute;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: flex-end;
+			text-align: center;
+			box-sizing: border-box;
+			padding: clamp(2px, 0.4vmin, 6px);
+		}
+		.wp-birdnet-hero-slot {
+		}
+		.wp-birdnet-cluster-thumb-wrap {
+			flex: 1;
+			width: 100%;
+			min-height: 0;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			position: relative;
+		}
+		.wp-birdnet-cluster-thumb {
+			max-width: 100%;
+			max-height: 100%;
+			object-fit: contain;
+			mix-blend-mode: multiply;
+		}
+		.wp-birdnet-cluster-label {
+			position: absolute;
+			transform: translate(-50%, 0);
+			text-align: center;
+			white-space: nowrap;
+			line-height: 1.1;
+			font-family: var(--wp-birdnet-sc, 'IM Fell English SC', 'Playfair Display', Georgia, serif);
+			font-size: clamp(8px, 1.05vmin, 12px);
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			color: var(--wp-birdnet-ink);
+			pointer-events: none;
+			z-index: 3;
+		}
+		.wp-birdnet-hero-label {
+			font-size: clamp(9px, 1.25vmin, 15px);
+			letter-spacing: 0.12em;
+			font-weight: 600;
+		}
+		.wp-birdnet-cluster-caption {
+			text-align: center;
+			padding-top: clamp(6px, 1vmin, 12px);
+			border-top: 0.5px solid rgba(28, 38, 38, 0.15);
+		}
+		.wp-birdnet-cluster-caption-main {
+			font-size: clamp(10px, 1.35vmin, 15px);
+			font-style: italic;
+			color: var(--wp-birdnet-ink);
+			letter-spacing: 1px;
+		}
+		.wp-birdnet-cluster-caption-sub {
+			font-size: clamp(8px, 1.0vmin, 12px);
+			font-style: italic;
+			color: var(--wp-birdnet-ink-muted);
+			margin-top: 2px;
+			opacity: 0.85;
+		}
+		.wp-birdnet-spread-mat {
+			background-color: var(--wp-birdnet-mat);
+			padding: clamp(8px, 1.8vmin, 24px);
+			box-sizing: border-box;
+			width: 100%;
+			height: 100%;
+		}
+		.wp-birdnet-spread {
+			display: flex;
+			flex-direction: row;
+			align-items: stretch;
+			justify-content: center;
+			width: 100%;
+			height: 100%;
+			border: 1.5px solid var(--wp-birdnet-border);
+			box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), inset 0 0 40px rgba(0, 0, 0, 0.04);
+			background-color: var(--wp-birdnet-plate);
+			box-sizing: border-box;
+			overflow: hidden;
+		}
+		.wp-birdnet-spread-left {
+			flex: 1.1;
+			height: 100%;
+			display: flex;
+			flex-direction: column;
+			box-sizing: border-box;
+			position: relative;
+			overflow: hidden;
+		}
+		.wp-birdnet-spread-spine {
+			width: 1px;
+			height: 100%;
+			background: var(--wp-birdnet-border);
+			position: relative;
+			flex-shrink: 0;
+			box-shadow: -2px 0 8px rgba(0, 0, 0, 0.18), 2px 0 8px rgba(0, 0, 0, 0.18);
+		}
+		.wp-birdnet-spread-right {
+			flex: 0.9;
+			height: 100%;
+			display: flex;
+			flex-direction: column;
+			box-sizing: border-box;
+			position: relative;
+			overflow: hidden;
+		}
+		.wp-birdnet-spread .wp-birdnet-mat {
+			padding: clamp(6px, 1.2vmin, 16px);
+			background: transparent;
+			box-shadow: none;
+			border: none;
+			width: 100%;
+			height: 100%;
+			box-sizing: border-box;
+		}
+		.wp-birdnet-spread .wp-birdnet-plate-card {
+			box-shadow: none;
+			border: none;
+			background: transparent;
+			width: 100%;
+			height: 100%;
+			aspect-ratio: auto;
+			max-width: 100%;
+			max-height: 100%;
+		}
+		.wp-birdnet-spread .wp-birdnet-folio-card {
+			aspect-ratio: auto;
+			max-width: 100%;
+			height: 100%;
+		}
+		@media (max-aspect-ratio: 1.15) {
+			.wp-birdnet-spread {
+				flex-direction: column;
+			}
+			.wp-birdnet-spread-left {
+				display: none;
+			}
+			.wp-birdnet-spread-spine {
+				display: none;
+			}
+			.wp-birdnet-spread-right {
+				flex: 1;
+				width: 100%;
+			}
+		}
+		.wp-birdnet-chart-table {
+			width: 100%;
+			height: 100%;
+			border-collapse: collapse;
+			font-size: clamp(8px, 1.1vmin, 13px);
+		}
+		.wp-birdnet-chart-table th, .wp-birdnet-chart-table td {
+			border: 0.5px solid rgba(28, 38, 38, 0.2);
+			text-align: center;
+			padding: clamp(2px, 0.4vmin, 6px);
+		}
+		.wp-birdnet-chart-table th {
+			background-color: rgba(28, 38, 38, 0.06);
+			font-weight: 600;
+			letter-spacing: 1px;
+			text-transform: uppercase;
+		}
+		.wp-birdnet-chart-species {
+			text-align: left !important;
+			font-weight: 600;
+			font-variant: small-caps;
+			letter-spacing: 1.2px;
+			padding-left: 8px !important;
+			white-space: nowrap;
+		}
+		.wp-birdnet-chart-cell-busy {
+			background-color: rgba(28, 38, 38, 0.28);
+			color: #fff;
+			font-weight: bold;
+		}
+		.wp-birdnet-chart-cell-active {
+			background-color: rgba(28, 38, 38, 0.14);
+		}
+	`;
+}
 
 function addToMediaInfoCache(mediaUrl, value) {
 	const maxSize = Number(config.media_list_max_size);
@@ -1142,6 +2046,8 @@ function updateConfig() {
 			// Unsplash API currently places a limit of 50 requests per hour
 			config.media_list_update_interval = 90;
 		}
+	} else if (config.birdnet_url) {
+		config.show_images = true;
 	} else {
 		config.show_images = false;
 	}
@@ -1257,7 +2163,19 @@ function isActive() {
 }
 
 function mediaSourceType() {
-	if (!config.show_images || !config.image_url) {
+	if (!config.show_images) {
+		return "";
+	}
+	if (config.image_url && config.image_url.startsWith("birdnet")) return "birdnet";
+	if (
+		config.birdnet_url &&
+		(!config.image_url ||
+			config.image_url === defaultConfig["image_url"] ||
+			config.image_url.startsWith("birdnet"))
+	) {
+		return "birdnet";
+	}
+	if (!config.image_url) {
 		return "";
 	}
 	if (config.image_url.startsWith("media-entity-video://")) return "media-entity-video";
@@ -1524,6 +2442,11 @@ function initWallpanel() {
 			this.timerInterval = null;
 			this.windowEventHandlers = [];
 			this.infoBoxResizeObserver = null;
+			this.vettedPlates = { ...BIRDNET_VETTED_PLATES };
+			this.loadedPlatesUrl = "";
+			this.birdnetLocalPaths = null;
+			this.localBirdProbingFailedCount = 0;
+			this.attemptedAutoPlates = false;
 
 			this.screenWakeLock = new ScreenWakeLock();
 			this.cameraMotionDetection = new CameraMotionDetection();
@@ -2011,6 +2934,7 @@ function initWallpanel() {
 				}
 				${classCss}
 				${config.custom_css}
+				${getBirdnetCss()}
 			`;
 		}
 
@@ -2738,6 +3662,13 @@ function initWallpanel() {
 
 			const sourceChange =
 				oldConfig.image_url != config.image_url ||
+				oldConfig.birdnet_url != config.birdnet_url ||
+				oldConfig.birdnet_layout != config.birdnet_layout ||
+				oldConfig.birdnet_theme != config.birdnet_theme ||
+				oldConfig.birdnet_order != config.birdnet_order ||
+				oldConfig.birdnet_plates_url != config.birdnet_plates_url ||
+				oldConfig.birdnet_local_path != config.birdnet_local_path ||
+				JSON.stringify(oldConfig.birdnet_plates) != JSON.stringify(config.birdnet_plates) ||
 				oldConfig.media_order != config.media_order ||
 				oldConfig.media_list_max_size != config.media_list_max_size ||
 				JSON.stringify(oldConfig.exclude_filenames) != JSON.stringify(config.exclude_filenames) ||
@@ -2761,6 +3692,13 @@ function initWallpanel() {
 					this.resetMediaPathLists();
 					this.mediaList = [];
 					this.mediaIndex = -1;
+					this.birdnetLocalPaths = null;
+					this.localBirdProbingFailedCount = 0;
+					this.attemptedAutoPlates = false;
+					this.loadedPlatesUrl = "";
+					this.vettedPlates = { ...BIRDNET_VETTED_PLATES };
+					birdnetImageCache.clear();
+					probedUrlCache.clear();
 				}
 
 				this.updateMediaList(function () {
@@ -3055,7 +3993,7 @@ function initWallpanel() {
 		}
 
 		async updateMediaList(callback = null, force = false, retryCount = 0) {
-			if (!config.image_url) return;
+			if (!config.image_url && !config.birdnet_url) return;
 			if (this.updatingMediaList) return;
 			if (this.mediaListRetryAt > Date.now()) return;
 			if (!force) {
@@ -3075,6 +4013,8 @@ function initWallpanel() {
 				updateFunction = wp.updateMediaListFromImmichAPI;
 			} else if (sourceType == "media-source") {
 				updateFunction = wp.updateMediaListFromMediaSource;
+			} else if (sourceType == "birdnet") {
+				updateFunction = wp.updateMediaListFromBirdnet;
 			} else {
 				let url = config.image_url;
 				if (sourceType == "iframe") {
@@ -3738,6 +4678,659 @@ function initWallpanel() {
 			}
 		}
 
+		async updateMediaListFromBirdnet() {
+			if (config.birdnet_plates_url && config.birdnet_plates_url !== this.loadedPlatesUrl) {
+				await this.loadPlatesJson(config.birdnet_plates_url);
+			}
+
+			let speciesList = [];
+			const birdnetUrl = (config.birdnet_url || "").trim().replace(/\/+$/, "");
+
+			if (birdnetUrl && birdnetUrl !== "demo") {
+				try {
+					const headers = {};
+					if (config.birdnet_token) {
+						headers["Authorization"] = `Bearer ${config.birdnet_token}`;
+					}
+					const controller = new AbortController();
+					const timeoutId = setTimeout(() => controller.abort(), 8000);
+					const [dailyResp, recentResp] = await Promise.all([
+						fetch(`${birdnetUrl}/api/v2/analytics/species/daily`, {
+							headers,
+							credentials: "omit",
+							signal: controller.signal
+						})
+							.then((r) => (r.ok ? r.json() : null))
+							.catch(() => null),
+						fetch(`${birdnetUrl}/api/v2/detections/recent`, {
+							headers,
+							credentials: "omit",
+							signal: controller.signal
+						})
+							.then((r) => (r.ok ? r.json() : null))
+							.catch(() => null)
+					]);
+					clearTimeout(timeoutId);
+
+					if (dailyResp || recentResp) {
+						speciesList = this.processBirdnetApiResponse(dailyResp, recentResp);
+					}
+				} catch (e) {
+					logger.warn("BirdNET-Go API request failed, falling back to demo garden:", e);
+				}
+			}
+
+			if (!speciesList || speciesList.length === 0) {
+				speciesList = this.getBirdnetDemoData();
+			}
+
+			// Apply sorting
+			const order = config.birdnet_order || "recent";
+			if (order === "count") {
+				speciesList.sort((a, b) => b.count - a.count);
+			} else if (order === "name") {
+				speciesList.sort((a, b) => a.name.localeCompare(b.name));
+			} else if (order === "random") {
+				speciesList = shuffleArray(speciesList);
+			}
+
+			this.birdnetSpecies = speciesList;
+			this.lastBirdnetUpdate = Date.now();
+
+			const layout = config.birdnet_layout || "folio";
+			let mediaUrls = [];
+
+			if (layout === "cluster") {
+				mediaUrls = ["birdnet://cluster"];
+			} else if (layout === "chart") {
+				mediaUrls = ["birdnet://chart"];
+			} else if (layout === "spread") {
+				mediaUrls = speciesList.map((sp, idx) => `birdnet://spread/${encodeURIComponent(sp.sci)}?idx=${idx}`);
+			} else if (layout === "latest") {
+				const topSp = speciesList[0] || { sci: "Trichoglossus moluccanus" };
+				mediaUrls = [`birdnet://folio/${encodeURIComponent(topSp.sci)}?idx=0`];
+			} else if (layout === "auto") {
+				mediaUrls = [
+					...speciesList.map((sp, idx) => `birdnet://folio/${encodeURIComponent(sp.sci)}?idx=${idx}`),
+					"birdnet://cluster",
+					"birdnet://chart"
+				];
+			} else {
+				// "folio" or "plate"
+				mediaUrls = speciesList.map((sp, idx) => `birdnet://${layout}/${encodeURIComponent(sp.sci)}?idx=${idx}`);
+			}
+
+			if (!mediaUrls.length) {
+				mediaUrls = ["birdnet://cluster"];
+			}
+
+			this.mediaList = mediaUrls;
+			this.mediaIndex = 0;
+			this.lastMediaListUpdate = Date.now();
+
+			// Preload images in background
+			for (const sp of speciesList) {
+				this.resolveBirdImage(sp.sci, sp.name);
+			}
+
+			return this.mediaList;
+		}
+
+		processBirdnetApiResponse(dailyData, recentData) {
+			const speciesMap = new Map();
+			const minConfidence = (Number(config.birdnet_min_confidence) || 50) / 100;
+
+			// Extract species from daily analytics
+			let dailyItems = [];
+			if (Array.isArray(dailyData)) {
+				dailyItems = dailyData;
+			} else if (dailyData && Array.isArray(dailyData.species)) {
+				dailyItems = dailyData.species;
+			} else if (dailyData && Array.isArray(dailyData.data)) {
+				dailyItems = dailyData.data;
+			}
+
+			for (const item of dailyItems) {
+				const sci = item.scientific_name || item.sci || item.scientificName || "";
+				if (!sci) continue;
+				const name = item.common_name || item.name || item.commonName || sci;
+				const conf = Number(item.confidence || item.max_confidence || item.avg_confidence || 1);
+				if (conf < minConfidence && (item.count || 1) <= 1) continue;
+
+				let lastTime = item.latest_heard || item.last_time || item.last_heard || item.last || "";
+				if (lastTime.includes(":") && lastTime.length > 5) {
+					lastTime = lastTime.substring(0, 5);
+				}
+				speciesMap.set(sci, {
+					name,
+					sci,
+					count: Number(item.count || item.total_count || item.detections || 1),
+					conf,
+					last: lastTime,
+					first: item.first_time || item.first_heard || item.first || "",
+					hourly: Array.isArray(item.hourly) ? item.hourly : item.hourly_counts || []
+				});
+			}
+
+			// Ingest recent detections to augment last time and confidence
+			let recentItems = [];
+			if (Array.isArray(recentData)) {
+				recentItems = recentData;
+			} else if (recentData && Array.isArray(recentData.detections)) {
+				recentItems = recentData.detections;
+			}
+
+			for (const det of recentItems) {
+				const sci = det.scientific_name || det.sci || det.scientificName || "";
+				if (!sci) continue;
+				const name = det.common_name || det.name || det.commonName || sci;
+				const conf = Number(det.confidence || 0.9);
+				if (conf < minConfidence) continue;
+
+				let timeStr = "";
+				if (det.time) {
+					timeStr = det.time.includes("T") ? det.time.split("T")[1].substring(0, 5) : det.time;
+				} else if (det.timestamp) {
+					const d = new Date(det.timestamp);
+					timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+				}
+
+				if (speciesMap.has(sci)) {
+					const existing = speciesMap.get(sci);
+					if (!existing.last && timeStr) existing.last = timeStr;
+				} else {
+					speciesMap.set(sci, {
+						name,
+						sci,
+						count: 1,
+						conf,
+						last: timeStr,
+						first: timeStr,
+						hourly: []
+					});
+				}
+			}
+
+			return Array.from(speciesMap.values());
+		}
+
+		getBirdnetDemoData() {
+			const now = new Date();
+			const currentHour = now.getHours();
+			const currentMin = now.getMinutes();
+
+			return BIRDNET_DEMO_SPECIES.map((demo, idx) => {
+				const item = { ...demo };
+				const hourOffset = (idx * 37) % 60;
+				const demoHour = Math.max(5, (currentHour - Math.floor(idx / 2)) % 24);
+				const demoMin = (currentMin + hourOffset) % 60;
+				item.last = `${String(demoHour).padStart(2, "0")}:${String(demoMin).padStart(2, "0")}`;
+				return item;
+			});
+		}
+
+		async loadPlatesJson(url) {
+			if (!url) return;
+			try {
+				const resp = await fetch(url);
+				if (resp.ok) {
+					const data = await resp.json();
+					const plates = data.plates || data;
+					this.vettedPlates = Object.assign({}, BIRDNET_VETTED_PLATES, plates);
+					this.loadedPlatesUrl = url;
+					logger.debug(`Loaded ${Object.keys(plates).length} custom plates from ${url}`);
+				}
+			} catch (err) {
+				logger.warn(`Failed to load plates.json from ${url}:`, err);
+			}
+		}
+
+		async resolveBirdImage(sciName, commonName = "") {
+			if (!sciName) return null;
+			if (birdnetImageCache.has(sciName)) {
+				return birdnetImageCache.get(sciName);
+			}
+
+			// Deduce commonName from birdnetSpecies if not provided
+			if (!commonName && this.birdnetSpecies) {
+				const sp = this.birdnetSpecies.find((s) => s.sci === sciName);
+				if (sp && sp.name) commonName = sp.name;
+			}
+
+			// 1. Option 4: Inline dashboard configuration (config.birdnet_plates)
+			if (config.birdnet_plates && typeof config.birdnet_plates === "object") {
+				const inline = config.birdnet_plates[sciName] || (commonName && config.birdnet_plates[commonName]);
+				if (inline) {
+					let plateUrl = "";
+					let box = null;
+					let artist = "";
+					let source = "Inline Configuration";
+
+					if (typeof inline === "string") {
+						plateUrl = inline.trim();
+					} else if (typeof inline === "object") {
+						plateUrl = (inline.url || inline.file || "").trim();
+						box = inline.box || null;
+						artist = inline.artist || "";
+						source = inline.source || source;
+					}
+
+					if (plateUrl) {
+						if (plateUrl.startsWith("File:")) {
+							plateUrl = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(plateUrl.replace(/^File:/i, ""))}`;
+						} else if (
+							!plateUrl.includes("://") &&
+							!plateUrl.startsWith("/") &&
+							!plateUrl.startsWith("./") &&
+							!plateUrl.startsWith("data:")
+						) {
+							const basePath = (this.birdnetLocalPaths && this.birdnetLocalPaths[0]) || "/local/birds/";
+							plateUrl = `${basePath}${plateUrl}`;
+						}
+
+						const entry = { url: plateUrl, box, artist, source };
+						birdnetImageCache.set(sciName, entry);
+						return entry;
+					}
+				}
+			}
+
+			// 2. Check explicitly loaded plates manifest or auto-discovered plates.json
+			if (!this.loadedPlatesUrl && !this.attemptedAutoPlates) {
+				this.attemptedAutoPlates = true;
+				for (const autoUrl of ["/local/birds/plates.json", "/media/local/birds/plates.json"]) {
+					// eslint-disable-next-line no-await-in-loop
+					await this.loadPlatesJson(autoUrl);
+					if (this.loadedPlatesUrl) break;
+				}
+			}
+
+			const vetted = this.vettedPlates && this.vettedPlates[sciName];
+
+			// If explicitly loaded from custom plates.json URL, honor vetted.image/file directly
+			if (this.loadedPlatesUrl && vetted) {
+				let plateUrl = vetted.image || vetted.url || "";
+				if (!plateUrl && vetted.file) {
+					if (
+						vetted.file.startsWith("http://") ||
+						vetted.file.startsWith("https://") ||
+						vetted.file.startsWith("/") ||
+						vetted.file.startsWith("./") ||
+						vetted.file.startsWith("data:")
+					) {
+						plateUrl = vetted.file;
+					} else {
+						const lastSlash = this.loadedPlatesUrl.lastIndexOf("/");
+						const baseDir = lastSlash >= 0 ? this.loadedPlatesUrl.substring(0, lastSlash + 1) : "";
+						plateUrl = `${baseDir}${vetted.file}`;
+					}
+				}
+				if (plateUrl) {
+					const entry = {
+						url: plateUrl,
+						box: vetted.box || null,
+						artist: vetted.artist || "",
+						source: vetted.source || "Plates Manifest"
+					};
+					birdnetImageCache.set(sciName, entry);
+					return entry;
+				}
+			}
+
+			// 3. Option 2: Local Filename Heuristic Probing (Convention over configuration)
+			// Probe local directories before falling back to remote search.
+			if (!this.birdnetLocalPaths) {
+				if (config.birdnet_local_path) {
+					this.birdnetLocalPaths = Array.isArray(config.birdnet_local_path)
+						? [...config.birdnet_local_path]
+						: [config.birdnet_local_path];
+				} else {
+					this.birdnetLocalPaths = ["/media/local/birds/", "/local/birds/"];
+				}
+				this.birdnetLocalPaths = this.birdnetLocalPaths.map((p) => (p.endsWith("/") ? p : `${p}/`));
+			}
+
+			if (this.localBirdProbingFailedCount < 4) {
+				const candidateFilenames = getBirdnetCandidateFilenames(sciName, commonName, vetted?.file);
+
+				for (const basePath of this.birdnetLocalPaths) {
+					for (const fname of candidateFilenames) {
+						const candidateUrl = `${basePath}${fname}`;
+						// eslint-disable-next-line no-await-in-loop
+						const exists = await probeImageUrl(candidateUrl);
+						if (exists) {
+							const pIdx = this.birdnetLocalPaths.indexOf(basePath);
+							if (pIdx > 0) {
+								this.birdnetLocalPaths.splice(pIdx, 1);
+								this.birdnetLocalPaths.unshift(basePath);
+							}
+							const entry = {
+								url: candidateUrl,
+								box: vetted?.box || null,
+								artist: vetted?.artist || "Local Collection",
+								source: "Local"
+							};
+							birdnetImageCache.set(sciName, entry);
+							return entry;
+						}
+					}
+				}
+				this.localBirdProbingFailedCount++;
+			}
+
+			// 4. Remote Fallback: Search Wikimedia Commons ONLY if no local image was found
+			try {
+				const query = encodeURIComponent(`"${sciName}" illustration OR plate`);
+				const searchUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${query}&gsrnamespace=6&gsrlimit=1&prop=imageinfo&iiprop=url|mime&format=json&origin=*`;
+				// eslint-disable-next-line compat/compat
+				const controller = new AbortController();
+				const timeoutId = setTimeout(() => controller.abort(), 6000);
+				const resp = await fetch(searchUrl, { signal: controller.signal });
+				clearTimeout(timeoutId);
+				if (resp.ok) {
+					const data = await resp.json();
+					const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
+					if (pages.length > 0 && pages[0].title) {
+						const fileName = pages[0].title.replace(/^File:/i, "");
+						const plateUrl = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(fileName)}?width=1200`;
+						const entry = { url: plateUrl, box: null, artist: "", source: "Wikimedia Commons" };
+						birdnetImageCache.set(sciName, entry);
+						return entry;
+					}
+				}
+			} catch (e) {
+				logger.debug(`Historical plate search failed for ${sciName}:`, e);
+			}
+
+			// 5. Secondary Remote Fallback: iNaturalist public taxa photography
+			try {
+				// eslint-disable-next-line compat/compat
+				const controller = new AbortController();
+				const timeoutId = setTimeout(() => controller.abort(), 4000);
+				const resp = await fetch(
+					`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sciName)}&rank=species&per_page=1`,
+					{ signal: controller.signal }
+				);
+				clearTimeout(timeoutId);
+				if (resp.ok) {
+					const json = await resp.json();
+					const photo = json?.results?.[0]?.default_photo;
+					const photoUrl = photo?.medium_url || photo?.square_url;
+					if (photoUrl) {
+						const entry = { url: photoUrl, box: null, artist: photo?.attribution || "", source: "iNaturalist" };
+						birdnetImageCache.set(sciName, entry);
+						return entry;
+					}
+				}
+			} catch (e) {
+				logger.debug(`iNaturalist photo lookup failed for ${sciName}:`, e);
+			}
+
+			const emptyEntry = { url: "", box: null, artist: "", source: "" };
+			birdnetImageCache.set(sciName, emptyEntry);
+			return emptyEntry;
+		}
+
+		renderPlateArtwork(species, className = "wp-birdnet-artwork", style = "") {
+			const entry = (species && species.sci && birdnetImageCache.get(species.sci)) || {};
+			const imgUrl = species.image || entry.url || "";
+			const box = species.box || entry.box;
+			const altName = escapeHtml(species.name || "");
+
+			if (box && Array.isArray(box) && box.length === 4) {
+				const [x0, y0, x1, y1] = box;
+				const boxW = Math.max(0.01, x1 - x0);
+				const boxH = Math.max(0.01, y1 - y0);
+				const imgWidthPercent = (1 / boxW) * 100;
+				const imgHeightPercent = (1 / boxH) * 100;
+				const imgLeftPercent = (-x0 / boxW) * 100;
+				const imgTopPercent = (-y0 / boxH) * 100;
+
+				return `
+					<div class="${className}-crop-container" style="position: relative; overflow: hidden; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; ${style}">
+						<img src="${imgUrl}" alt="${altName}" class="${className}" style="position: absolute; width: ${imgWidthPercent}%; height: ${imgHeightPercent}%; left: ${imgLeftPercent}%; top: ${imgTopPercent}%; object-fit: fill; mix-blend-mode: multiply; pointer-events: none;">
+					</div>
+				`;
+			}
+			return `
+				<img src="${imgUrl}" alt="${altName}" class="${className}" style="max-width: 100%; max-height: 100%; object-fit: contain; mix-blend-mode: multiply; pointer-events: none; ${style}">
+			`;
+		}
+
+		renderBirdnetLayout(layout, species, allSpecies, idx = 0) {
+			const theme = config.birdnet_theme || "sage";
+			const themeClass = `theme-${theme}`;
+
+			if (layout === "cluster") {
+				return `<div class="wallpanel-birdnet-container ${themeClass}">${this.renderBirdnetCluster(allSpecies)}</div>`;
+			}
+			if (layout === "chart") {
+				return `<div class="wallpanel-birdnet-container ${themeClass}">${this.renderBirdnetChart(allSpecies)}</div>`;
+			}
+			if (layout === "spread") {
+				return `<div class="wallpanel-birdnet-container ${themeClass}">${this.renderBirdnetSpread(species, allSpecies, idx)}</div>`;
+			}
+			if (layout === "plate") {
+				return `<div class="wallpanel-birdnet-container ${themeClass}">${this.renderBirdnetPlate(species, idx)}</div>`;
+			}
+			// Default: "folio" or "latest"
+			return `<div class="wallpanel-birdnet-container ${themeClass}">${this.renderBirdnetFolio(species, idx)}</div>`;
+		}
+
+		renderBirdnetFolio(species, idx = 0) {
+			const plateNum = toRoman((idx % 50) + 1);
+			const label = escapeHtml(config.birdnet_label || "BACKYARD");
+			const name = escapeHtml(species.name || "Unknown Bird");
+			const sci = escapeHtml(species.sci || "");
+
+			let note = "";
+			if (species.count === 1) {
+				note = `Heard for the first time to-day at ${species.last || species.first || "06:00"}.`;
+			} else {
+				const ordinalStr = formatOrdinalWords(species.count) || `${species.count}th`;
+				note = `Heard the ${ordinalStr} time to-day, last at ${species.last || "12:00"}.`;
+			}
+
+			return `
+				<div class="wp-birdnet-mat">
+					<div class="wp-birdnet-plate-card wp-birdnet-folio-card">
+						<div class="wp-birdnet-inner-border">
+							<div class="wp-birdnet-header">
+								<span class="wp-birdnet-label">${label}</span>
+								<span class="wp-birdnet-plate-num">Pl. ${plateNum}.</span>
+							</div>
+							<div class="wp-birdnet-artwork-wrapper">
+								${this.renderPlateArtwork(species, "wp-birdnet-artwork")}
+							</div>
+							<div class="wp-birdnet-footer">
+								<div class="wp-birdnet-name">${name}.</div>
+								<div class="wp-birdnet-sci">${sci}</div>
+								<div class="wp-birdnet-note">${note}</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			`;
+		}
+
+		renderBirdnetCluster(allSpecies = [], forcePortrait = null) {
+			const sorted = allSpecies.slice().sort((a, b) => (b.count || 0) - (a.count || 0));
+			const speciesToShow = sorted.slice(0, Math.min(sorted.length, 12));
+			const total = speciesToShow.length;
+
+			const isPortrait = forcePortrait !== null ? forcePortrait : window.innerHeight > window.innerWidth;
+			const slots = getOvalSlots(total, isPortrait);
+
+			const indices = total >= 4 ? [...Array(total - 1).keys()].map(i => i + 1).concat([0]) : [...Array(total).keys()];
+
+			const slotsHtml = indices
+				.map((idx) => {
+					const sp = speciesToShow[idx];
+					if (!sp) return "";
+					const slot = slots[idx] || slots[0];
+					const isHero = idx === 0 && total >= 4;
+					const heroClass = isHero ? " wp-birdnet-hero-slot" : "";
+					return `
+						<div class="wp-birdnet-oval-slot${heroClass}" style="position: absolute; left: ${(slot.x * 100).toFixed(2)}%; top: ${(slot.y * 100).toFixed(2)}%; width: ${(slot.w * 100).toFixed(2)}%; height: ${(slot.h * 100).toFixed(2)}%;">
+							<div class="wp-birdnet-cluster-thumb-wrap">
+								${this.renderPlateArtwork(sp, "wp-birdnet-cluster-thumb")}
+							</div>
+						</div>
+					`;
+				})
+				.join("");
+
+			const labelsHtml = indices
+				.map((idx) => {
+					const sp = speciesToShow[idx];
+					if (!sp) return "";
+					const slot = slots[idx] || slots[0];
+					const spName = escapeHtml(sp.name || "");
+					const isHero = idx === 0 && total >= 4;
+					const heroClass = isHero ? " wp-birdnet-hero-label" : "";
+					const labelY = isHero ? slot.cy + slot.h * 0.48 : slot.cy + slot.h * 0.45;
+					return `
+						<div class="wp-birdnet-cluster-label${heroClass}" style="left: ${(slot.cx * 100).toFixed(2)}%; top: ${(labelY * 100).toFixed(2)}%;">
+							${spName}
+						</div>
+					`;
+				})
+				.join("");
+
+			const label = escapeHtml(config.birdnet_label || "Backyard");
+			const now = new Date();
+			const dateStr = now.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+			const speciesCount = allSpecies.length;
+
+			return `
+				<div class="wp-birdnet-mat wp-birdnet-cluster-mat">
+					<div class="wp-birdnet-plate-card wp-birdnet-cluster-card">
+						<div class="wp-birdnet-cluster-inner">
+							<div class="wp-birdnet-cluster-sheet">
+								<div class="wp-birdnet-oval-canvas">
+									${slotsHtml}
+									${labelsHtml}
+								</div>
+								<div class="wp-birdnet-cluster-caption">
+									<div class="wp-birdnet-cluster-caption-main">
+										${label} · heard to-day · ${dateStr} · ${speciesCount} species
+									</div>
+									<div class="wp-birdnet-cluster-caption-sub">
+										Historical plates watercolour after Audubon, Gould, Lear &amp; Broinowski.
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			`;
+		}
+
+		renderBirdnetSpread(species, allSpecies = [], idx = 0) {
+			const clusterHtml = this.renderBirdnetCluster(allSpecies, false);
+			const folioHtml = this.renderBirdnetFolio(species, idx, allSpecies.length);
+
+			return `
+				<div class="wp-birdnet-mat wp-birdnet-spread-mat">
+					<div class="wp-birdnet-spread">
+						<div class="wp-birdnet-spread-left">${clusterHtml}</div>
+						<div class="wp-birdnet-spread-spine"></div>
+						<div class="wp-birdnet-spread-right">${folioHtml}</div>
+					</div>
+				</div>
+			`;
+		}
+
+		renderBirdnetChart(allSpecies = []) {
+			const label = escapeHtml(config.birdnet_label || "Backyard");
+			const now = new Date();
+			const dateStr = now.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+			const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+
+			const headerHours = hours.map((h) => `<th>${h}</th>`).join("");
+			const rowsHtml = allSpecies
+				.slice(0, 10)
+				.map((sp) => {
+					const hourly = Array.isArray(sp.hourly) && sp.hourly.length === 24 ? sp.hourly : new Array(24).fill(0);
+					const cells = hourly
+						.map((c) => {
+							let cls = "";
+							if (c > 3) cls = "wp-birdnet-chart-cell-busy";
+							else if (c > 0) cls = "wp-birdnet-chart-cell-active";
+							return `<td class="${cls}">${c > 0 ? c : ""}</td>`;
+						})
+						.join("");
+
+					return `
+						<tr>
+							<td class="wp-birdnet-chart-species">${escapeHtml(sp.name)}</td>
+							${cells}
+							<td><strong>${sp.count}</strong></td>
+						</tr>
+					`;
+				})
+				.join("");
+
+			return `
+				<div class="wp-birdnet-mat">
+					<div class="wp-birdnet-plate-card wp-birdnet-cluster-card">
+						<div class="wp-birdnet-cluster-inner">
+							<div class="wp-birdnet-header">
+								<span class="wp-birdnet-label">${label} — ACTIVITY LEDGER</span>
+								<span class="wp-birdnet-plate-num">${dateStr}</span>
+							</div>
+							<div style="flex: 1; overflow: auto; padding: 1.5vmin 0;">
+								<table class="wp-birdnet-chart-table">
+									<thead>
+										<tr>
+											<th style="text-align: left; padding-left: 8px;">Species</th>
+											${headerHours}
+											<th>Total</th>
+										</tr>
+									</thead>
+									<tbody>
+										${rowsHtml}
+									</tbody>
+								</table>
+							</div>
+							<div class="wp-birdnet-cluster-caption">
+								<div class="wp-birdnet-cluster-caption-main">
+									Hourly call frequency ledger · BirdNET-Go Bioacoustic Monitoring
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			`;
+		}
+
+		renderBirdnetPlate(species, idx = 0) {
+			const plateNum = toRoman((idx % 50) + 1);
+			const label = escapeHtml(config.birdnet_label || "BACKYARD");
+			const name = escapeHtml(species.name || "Unknown Bird");
+			const sci = escapeHtml(species.sci || "");
+
+			return `
+				<div class="wp-birdnet-mat">
+					<div class="wp-birdnet-plate-card" style="width: 90%; height: 90%; aspect-ratio: 0.72;">
+						<div class="wp-birdnet-inner-border">
+							<div class="wp-birdnet-header">
+								<span class="wp-birdnet-label">${label}</span>
+								<span class="wp-birdnet-plate-num">Pl. ${plateNum}.</span>
+							</div>
+							<div class="wp-birdnet-artwork-wrapper">
+								${this.renderPlateArtwork(species, "wp-birdnet-artwork")}
+							</div>
+							<div class="wp-birdnet-footer" style="border: none;">
+								<div class="wp-birdnet-name">${name}.</div>
+								<div class="wp-birdnet-sci">${sci}</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			`;
+		}
+
 		fillPlaceholders(url) {
 			const width = this.screensaverContainer.clientWidth;
 			const height = this.screensaverContainer.clientHeight;
@@ -4077,6 +5670,66 @@ function initWallpanel() {
 			return await this.updateMediaFromUrl(element, element.mediaUrl);
 		}
 
+		async updateMediaFromBirdnet(element) {
+			const mediaUrl = element.mediaUrl || "";
+			const match = mediaUrl.match(/^birdnet:\/\/([^/?]+)(?:\/([^?]+))?(?:\?idx=(\d+))?/);
+			const layout = match ? match[1] : config.birdnet_layout || "folio";
+			const sci = match && match[2] ? decodeURIComponent(match[2]) : "";
+			const idx = match && match[3] ? parseInt(match[3], 10) : 0;
+
+			const allSpecies =
+				this.birdnetSpecies && this.birdnetSpecies.length ? this.birdnetSpecies : this.getBirdnetDemoData();
+			let species = allSpecies.find((s) => s.sci === sci);
+			if (!species) {
+				species = allSpecies[idx % allSpecies.length] || allSpecies[0];
+			}
+
+			if (species && species.sci) {
+				const res = await this.resolveBirdImage(species.sci, species.name);
+				if (res) {
+					species.image = res.url;
+					species.box = res.box;
+					species.artist = res.artist;
+				}
+			}
+
+			if (layout === "cluster" || layout === "spread" || layout === "auto") {
+				await Promise.all(
+					allSpecies.slice(0, 16).map(async (s) => {
+						const res = await this.resolveBirdImage(s.sci, s.name);
+						if (res) {
+							s.image = res.url;
+							s.box = res.box;
+							s.artist = res.artist;
+						}
+					})
+				);
+			}
+
+			if (element.tagName.toLowerCase() !== "div") {
+				element = this.replaceMediaElement(element, "div");
+			}
+
+			element.className = "wallpanel-birdnet-container";
+			element.style.position = "absolute";
+			element.style.top = "0px";
+			element.style.left = "0px";
+			element.style.width = "100%";
+			element.style.height = "100%";
+			element.style.display = "flex";
+			element.style.justifyContent = "center";
+			element.style.alignItems = "center";
+			element.style.boxSizing = "border-box";
+			element.style.overflow = "hidden";
+			element.style.pointerEvents = "none";
+
+			element.innerHTML = this.renderBirdnetLayout(layout, species, allSpecies, idx);
+			element.mediaUrl = mediaUrl;
+			element.infoCacheUrl = mediaUrl;
+
+			return element;
+		}
+
 		async updateMedia(element) {
 			if (!config.show_images) {
 				return;
@@ -4114,7 +5767,9 @@ function initWallpanel() {
 				}
 				element.infoCacheUrl = element.mediaUrl;
 
-				if (mediaSourceType() == "media-source") {
+				if (mediaSourceType() == "birdnet") {
+					element = await this.updateMediaFromBirdnet(element);
+				} else if (mediaSourceType() == "media-source") {
 					element = await this.updateMediaFromMediaSource(element);
 				} else if (mediaSourceType() == "unsplash-api") {
 					element = await this.updateMediaFromUnsplashAPI(element);
@@ -4246,7 +5901,7 @@ function initWallpanel() {
 					}
 					hiddenWidth = Math.max(setWidth - availWidth, 0);
 				}
-			} else if (tagName !== "iframe" && tagName !== "embed") {
+			} else if (tagName !== "iframe" && tagName !== "embed" && tagName !== "div") {
 				logger.warn("Size not available for media element", mediaElem);
 			}
 			logger.debug(

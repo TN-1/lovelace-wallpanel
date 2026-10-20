@@ -1,0 +1,218 @@
+{
+  "version": 1,
+  "description": "1:1 Copy of AI generation prompt templates from dmellok/tesserae-widget-backyard-birds",
+  "master_templates": {
+    "single_bird": "Paint the bird in the reference photo, the {name} ({sci}), as {style}. Keep the plumage, markings, bill and proportions exactly as in the photo, {pose} alone on plain, empty paper with a clear margin all round. No other birds, no scenery, no text, no lettering, no border, no signature.",
+    "cluster_blend": "This picture is a collage of {n} birds, each painted on its own: {birds}. Repaint it as one seamless picture, {style}, with all the birds together in a single natural scene: {scene}, one continuous background, the same light and paper throughout. {fidelity} No text, no labels, no numbers, no border, no signature."
+  },
+  "poses": {
+    "perched": "perched on a simple branch, the whole bird and its perch",
+    "flight": "in flight with its wings spread, seen from the side a little below, the whole bird"
+  },
+  "scenes": {
+    "auto": "the birds gathered in an oval cluster, like a Victorian vignette, on branches and foliage that join them",
+    "branch": "all perched along one shared branch",
+    "tree": "perched through the branches of one tree",
+    "birdbath": "gathered round a stone bird bath in a garden",
+    "wire": "sitting in a row along a telephone wire against the sky",
+    "feeder": "gathered at and around a hanging bird feeder",
+    "meadow": "on the ground and low stems of a wildflower meadow",
+    "sky": "all in flight together across an open sky",
+    "wetland": "among reeds and still water at the edge of a wetland",
+    "garden": "in a cottage garden, on a fence, shrubs and a path"
+  },
+  "fidelity": {
+    "exact": "Keep every bird's species, plumage, markings, pose and size as painted, and keep each about where it is.",
+    "free": "Keep every bird's species, plumage and markings, but re-pose and move the birds freely to make the scene natural."
+  },
+  "styles": {
+    "gould": {
+      "label": "Hand-coloured lithograph (Gould)",
+      "prompt": "a plate from a nineteenth-century natural history book: a hand-coloured lithograph in the manner of John Gould. Soft watercolour washes over fine engraved linework, plain cream paper background, generous margins"
+    },
+    "audubon": {
+      "label": "Watercolour after Audubon",
+      "prompt": "a life-size watercolour in the manner of John James Audubon's Birds of America: a lively natural pose among a few leaves, watercolour and pastel with fine detail in the feathers, plain cream paper background"
+    },
+    "woodblock": {
+      "label": "Japanese woodblock print",
+      "prompt": "a Japanese kacho-e woodblock print in the manner of Ohara Koson: flat areas of colour with a fine dark keyline, a soft graded background, a single flowering branch, the texture of washi paper"
+    },
+    "engraving": {
+      "label": "Black-ink engraving",
+      "prompt": "a black-ink copperplate engraving from a Victorian encyclopaedia of natural history: fine cross-hatching and stippling, no colour at all, plain white paper"
+    },
+    "linocut": {
+      "label": "Linocut",
+      "prompt": "a bold linocut print in black ink with one muted colour: strong carved lines, simple shapes, a little texture from the block, plain off-white paper"
+    },
+    "grumpy": {
+      "label": "Grumpy (plate style)",
+      "prompt": "a hand-coloured lithograph from a nineteenth-century natural history book, soft watercolour washes over fine engraved linework on warm cream paper, of a comically plump bird: an almost perfectly round ball of feathers with a big head, a stubby tail and small feet, like a cartoon game character. Give it a very expressive, furious face: heavy dark brows of feathers slanting down over narrowed eyes, a hard glare and a determined scowl. Paint all of it with real, detailed feathers, keeping the species' true colours, markings and bill so it is still plainly that bird"
+    },
+    "sketch": {
+      "label": "Field sketch",
+      "prompt": "a naturalist's field sketch in graphite with a light watercolour wash: loose construction lines, a few annotations of shape only, on cream sketchbook paper"
+    },
+    "anime": {
+      "label": "Anime",
+      "prompt": "a hand-drawn anime film illustration: clean confident line art, soft cel shading, large expressive eyes and gentle pastel colours, still true to the species, on plain pale paper"
+    },
+    "origami": {
+      "label": "Origami",
+      "prompt": "a flat, colourful origami illustration of the bird: folded from bright paper in bold flat planes of the species' own colours, every facet a clean flat shape with crisp straight creases drawn as fine lines, no shading, no gradients and no studio light, graphic and poster-like, on a plain pale paper background"
+    },
+    "felt": {
+      "label": "Needle felt",
+      "prompt": "a needle-felted wool figure of the bird, soft and fuzzy, in the species' true colours and markings, photographed on a plain pale background"
+    },
+    "clay": {
+      "label": "Clay figure",
+      "prompt": "a hand-sculpted plasticine figure of the bird for a stop-motion film, chunky with a slight sheen and visible thumbprints, in the species' true colours, on a plain pale background"
+    },
+    "kawaii": {
+      "label": "Kawaii sticker",
+      "prompt": "a cute kawaii sticker of the bird: round and chibi with a happy face, flat bright colours, a thick white die-cut border, on plain white paper"
+    },
+    "pixel": {
+      "label": "Pixel art",
+      "prompt": "16-bit pixel art sprite of the bird with a limited palette, crisp square pixels and no anti-aliasing, true to the species' colours, on a plain pale background"
+    },
+    "bricks": {
+      "label": "Brick-built",
+      "prompt": "a model of the bird built from small plastic toy bricks, studs showing, in the species' colours, on a plain pale background"
+    },
+    "risograph": {
+      "label": "Risograph print",
+      "prompt": "a risograph print in two or three overprinted spot colours, grainy texture and slight misregistration, on plain off-white paper"
+    },
+    "screenprint": {
+      "label": "Screen print poster",
+      "prompt": "a mid-century screen-printed nature poster: flat shapes of colour, simple bold forms and a slightly textured ink, on plain cream paper"
+    },
+    "embroidery": {
+      "label": "Embroidery",
+      "prompt": "satin-stitch embroidery in silk thread on plain natural linen, every feather in stitches of the species' true colours"
+    },
+    "stainedglass": {
+      "label": "Stained glass",
+      "prompt": "a stained-glass panel of the bird: dark lead lines around pieces of jewel-coloured glass in the species' colours, on a plain pale background"
+    },
+    "mosaic": {
+      "label": "Mosaic",
+      "prompt": "a mosaic of small square tesserae of stone and glass in the species' colours, set in pale grout, on a plain pale background"
+    },
+    "papercut": {
+      "label": "Paper cut",
+      "prompt": "a layered cut-paper collage of the bird, with sheets of coloured paper in the species' colours and soft shadows between the layers, on plain white paper"
+    },
+    "sumie": {
+      "label": "Ink and wash",
+      "prompt": "a Japanese sumi-e ink and wash painting: a few confident brushstrokes of black ink with soft grey washes and a touch of colour, on plain rice paper"
+    },
+    "pointillism": {
+      "label": "Pointillism",
+      "prompt": "a pointillist painting made entirely of small dots of pure colour that blend at a distance, on plain white paper"
+    },
+    "artnouveau": {
+      "label": "Art Nouveau illustration",
+      "prompt": "an Art Nouveau illustration with sinuous flowing lines, a muted palette and decorative leaves curling round the branch, on plain cream paper"
+    },
+    "watercolour": {
+      "label": "Modern watercolour",
+      "prompt": "a loose, airy modern watercolour with soft wet edges, a few precise details and plenty of white space, on plain white paper"
+    },
+    "charcoal": {
+      "label": "Charcoal",
+      "prompt": "a dramatic charcoal drawing with rich blacks, smudged soft tones and a few white chalk highlights, on plain toned paper"
+    },
+    "hats": {
+      "label": "Tiny hats",
+      "prompt": "a realistic hand-coloured lithograph in the manner of John Gould on warm cream paper, except that the bird wears a small hat that suits its personality, painted with the same care"
+    },
+    "superhero": {
+      "label": "Superhero",
+      "prompt": "a realistic natural history painting on plain cream paper of the bird striking a heroic pose with a small flowing cape, dramatic light, plumage still true to life"
+    },
+    "portrait": {
+      "label": "Victorian portrait",
+      "prompt": "a stiff, dignified Victorian oil portrait of the bird as a family ancestor, in a small gilt oval frame, plumage painted true to life, on plain cream paper"
+    },
+    "pirate": {
+      "label": "Pirate",
+      "prompt": "a realistic hand-coloured lithograph in the manner of John Gould on warm cream paper, except that the bird is a pirate with an eye patch, a small tricorn hat and a cross scowl"
+    },
+    "artsandcrafts": {
+      "label": "Arts and Crafts (Morris)",
+      "prompt": "an Arts and Crafts illustration in the manner of William Morris: the bird set among dense, repeating stylised foliage and flowers like a wallpaper or tapestry panel, flat muted earth, olive and indigo colours with a firm dark outline, on plain unbleached paper"
+    },
+    "jugendstil": {
+      "label": "Jugendstil",
+      "prompt": "a Jugendstil illustration, the German Art Nouveau: squarer, more geometric ornament, a bold even outline, flat areas of muted colour, the bird framed in a decorative cartouche of stylised leaves, on plain cream paper"
+    },
+    "glasgow": {
+      "label": "Glasgow style",
+      "prompt": "a Glasgow style illustration in the manner of Charles Rennie Mackintosh and the Macdonald sisters: a tall elongated composition, stylised roses and fine grids, pale washed colours with a few strong dark lines and a great deal of empty space, on plain pale paper"
+    },
+    "secession": {
+      "label": "Vienna Secession",
+      "prompt": "a Vienna Secession illustration in the manner of Klimt and Moser: the bird's plumage true to life but its surroundings made of flat decorative shapes, gold, black and jewel colours, mosaic-like patterned areas, spirals and squares, on plain cream paper"
+    },
+    "deco": {
+      "label": "Art Deco",
+      "prompt": "an Art Deco illustration: stepped geometry, sunbursts and fans, the bird simplified into clean curves and chevrons, a palette of gold, black, teal and cream with flat colour and crisp edges, on plain cream paper"
+    },
+    "fairytale": {
+      "label": "Golden Age fairy-tale plate",
+      "prompt": "a Golden Age illustration in the manner of Arthur Rackham and Edmund Dulac: fine ink line with soft muted watercolour wash, gnarled branches and twisted roots as a frame, a faintly magical atmosphere, on plain toned paper"
+    },
+    "mucha": {
+      "label": "Mucha poster",
+      "prompt": "an Art Nouveau poster in the manner of Alphonse Mucha: the bird in a halo roundel, a flowing ornamental border, pastel flat colour with a crisp dark outline, and empty panels where lettering would go, on plain cream paper"
+    },
+    "beardsley": {
+      "label": "Beardsley ink",
+      "prompt": "a black-and-white ink illustration in the manner of Aubrey Beardsley: bold sweeping lines, large flat black masses against white, ornamental dots and fine hatching, no colour at all, on plain white paper"
+    },
+    "nouveauglass": {
+      "label": "Nouveau stained window",
+      "prompt": "a Tiffany-style Art Nouveau stained-glass window of the bird: leaded curving lines around pieces of opalescent coloured glass, wisteria and dragonfly ornament, soft light through the glass, on a plain pale background"
+    },
+    "japonisme": {
+      "label": "Japonisme",
+      "prompt": "a Japonisme illustration, Western Art Nouveau borrowing from ukiyo-e: a flat bird on a branch, an asymmetric composition with an ornamented border and a small seal-like roundel, soft flat colours and a fine keyline, on plain cream paper"
+    },
+    "chinoiserie": {
+      "label": "Chinoiserie",
+      "prompt": "a hand-painted chinoiserie wallpaper panel: the bird on a flowering branch with delicate blossom and butterflies, soft flat colours on a pale ground, fine brushwork, on plain pale paper"
+    },
+    "persian": {
+      "label": "Persian miniature",
+      "prompt": "a Persian miniature painting: flat jewel colours, gold leaf, flattened perspective, the bird among tulips and stylised flowers under a patterned sky, with a gold and blue illuminated border, on plain cream paper"
+    },
+    "bestiary": {
+      "label": "Medieval bestiary",
+      "prompt": "a page from a medieval bestiary: the bird painted in red, blue and green tempera with gold leaf on a vellum ground, drawn as a manuscript illuminator would, with a vine and acanthus border, no text"
+    },
+    "byzantine": {
+      "label": "Byzantine icon",
+      "prompt": "a Byzantine icon panel of the bird: a burnished gold ground, a formal frontal pose with a halo-like circle behind the head, deep reds and blues in egg tempera, fine gold lines in the feathers"
+    },
+    "folkart": {
+      "label": "Folk art",
+      "prompt": "a folk-art painting of the bird in the manner of Pennsylvania Dutch fraktur and Scandinavian rosemaling: symmetric scrolls, hearts and tulips, flat bright colours with a dark outline, on plain cream paper"
+    },
+    "harper": {
+      "label": "Mid-century modern (Harper)",
+      "prompt": "a mid-century modern illustration in the manner of Charley Harper: the bird reduced to circles, triangles and clean geometric shapes, flat colour in a handful of tones, no outlines, true to the species' markings, on plain cream paper"
+    },
+    "cigarette": {
+      "label": "Edwardian cigarette card",
+      "prompt": "an Edwardian cigarette card chromolithograph of the bird: a small framed picture with a decorative border, slightly faded printed inks, fine detail, and a blank panel below for the name, on plain cream card"
+    },
+    "delft": {
+      "label": "Delft tile",
+      "prompt": "a Dutch Delft tile painting of the bird: cobalt blue on white tin-glazed earthenware, the bird in a tiled square with corner ornaments, brushy blue washes and a fine crackle in the glaze"
+    }
+  }
+}

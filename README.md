@@ -12,6 +12,7 @@
 WallPanel is a configurable extension that features:
 
 - Photo and video slideshow screensaver
+- BirdNET-Go bioacoustic monitoring with classic Victorian natural history plates (Audubon, Gould, Lear)
 - Show dashboard views, cards and badges of your choice on top of the images.
 - Full-screen mode
 - Hide the side and or top bar 
@@ -22,6 +23,7 @@ You can use images and videos from the following sources:
 
 - Home Assistant Media-source
 - Immich
+- BirdNET-Go (Victorian Folio bookplates, botanical specimen sheets, activity charts)
 - Home Assitant entities with entity_picture attribute
 - Full websites as iframe
 - Unsplash
@@ -71,6 +73,10 @@ This project is inspired by:
 - https://gist.github.com/ciotlosm/1f09b330aa5bd5ea87b59f33609cc931
 - https://github.com/richtr/NoSleep.js
 - https://github.com/madeInLagny/mil-no-sleep
+- https://github.com/dmellok/tesserae-widget-backyard-birds & https://github.com/dmellok/tesserae-widget-specimen-sheet (Backyard Birds Victorian folio, specimen sheets, and layout aesthetics by dmellok)
+- https://github.com/tphakala/birdnet-go (BirdNET-Go acoustic bird monitoring)
+- Historical natural history illustrators (Audubon, Gould, Lear, Broinowski, Keulemans, Martinet, Barraband) via Wikimedia Commons
+- https://www.inaturalist.org/ for open taxa photography
 
 ## Reviews / Tutorials
 - [SmartHomeScene - WallPanel: Home Assistant Screensaver for your wall-mounted control panel](https://smarthomescene.com/guides/wallpanel-home-assistant-screensaver-for-your-wall-mounted-control-panel)
