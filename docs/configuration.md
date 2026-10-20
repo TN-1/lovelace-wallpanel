@@ -52,6 +52,7 @@ You can set the following configuration parameters for every individual Home Ass
 | birdnet_min_confidence           | Minimum confidence percentage threshold for detections (0-100).                                        | 50        |
 | birdnet_update_interval          | Interval in seconds to refresh BirdNET-Go detection data.                                               | 300       |
 | birdnet_order                    | Order of bird species displayed (`recent`, `count`, `name`, `random`).                                 | recent    |
+| birdnet_card_offset              | Offset cluster sheet to prevent occlusion by screensaver cards (`auto`, `left`, `right`, `none`).     | auto      |
 | birdnet_local_path               | Local directory or URL path to check for bird artwork (e.g. `/media/local/birds/`, `/local/birds/`). Defaults to checking `/media/local/birds/` and `/local/birds/`. | `["/media/local/birds/", "/local/birds/"]` |
 | birdnet_plates                   | Inline dictionary mapping scientific binomials or common names to image URLs, local paths, or plate objects. | {} |
 | birdnet_plates_url               | Path or URL to a custom `plates.json` file (e.g. `/local/birds/plates.json`). See [Custom Plates](../examples/birdnet/README.md). |           |

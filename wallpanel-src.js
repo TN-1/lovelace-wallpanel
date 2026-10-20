@@ -125,6 +125,7 @@ const defaultConfig = {
 	birdnet_min_confidence: 50,
 	birdnet_update_interval: 300,
 	birdnet_order: "recent",
+	birdnet_card_offset: "auto",
 	content_interaction: false,
 	profile: "",
 	profile_entity: "",
@@ -321,10 +322,9 @@ function getOvalSlots(n, isPortrait = false) {
 		return [at(0.5, 0.44, 0.60, 0.65)];
 	}
 	if (n === 2) {
-		if (isPortrait) {
-			return [at(0.5, 0.28, 0.65, 0.38), at(0.5, 0.66, 0.65, 0.38)];
-		}
-		return [at(0.28, 0.44, 0.38, 0.65), at(0.68, 0.44, 0.38, 0.65)];
+		const w = isPortrait ? 0.40 : 0.30;
+		const h = isPortrait ? 0.34 : 0.30;
+		return [at(0.5, 0.28, w * 1.10, h * 1.10), at(0.5, 0.60, w * 0.85, h * 0.85)];
 	}
 	if (n === 3) {
 		const ring = 3;
@@ -335,12 +335,13 @@ function getOvalSlots(n, isPortrait = false) {
 		const slots = [];
 		for (let i = 0; i < ring; i++) {
 			const a = (-90 + (360 * i) / ring) * (Math.PI / 180);
-			slots.push(at(0.5 + rx * Math.cos(a), 0.44 + ry * Math.sin(a), w, h));
+			const scale = 1.15 - 0.20 * i; // Rank 0: 1.15x, Rank 1: 0.95x, Rank 2: 0.75x
+			slots.push(at(0.5 + rx * Math.cos(a), 0.44 + ry * Math.sin(a), w * scale, h * scale));
 		}
 		return slots;
 	}
 
-	// n >= 4: Busiest hero bird in center + tight, harmonious Victorian oval vignette
+	// n >= 4: Busiest hero bird in center (#1) + surrounding ring specimens (#2 to #N)
 	const ring = n - 1;
 	const rx = isPortrait ? 0.33 : 0.35;
 	const ry = isPortrait ? 0.35 : 0.32;
@@ -354,7 +355,12 @@ function getOvalSlots(n, isPortrait = false) {
 	const slots = [];
 	for (let i = 0; i < ring; i++) {
 		const a = (-90 + (360 * i) / ring) * (Math.PI / 180);
-		slots.push(at(0.5 + rx * Math.cos(a), cyCenter + ry * Math.sin(a), slotW, slotH));
+		// Subtle scaling effect by detection dominance:
+		// Ring rank 0 (#2 overall) is 1.15x, scaling down to 0.75x for the least detected
+		const scale = ring > 1 ? 1.15 - 0.40 * (i / (ring - 1)) : 1.0;
+		const w = slotW * scale;
+		const h = slotH * scale;
+		slots.push(at(0.5 + rx * Math.cos(a), cyCenter + ry * Math.sin(a), w, h));
 	}
 	return centre.concat(slots);
 }
@@ -452,214 +458,7 @@ function getBirdnetCandidateFilenames(sciName, commonName, vettedFile = "") {
 	return Array.from(new Set(results));
 }
 
-const BIRDNET_VETTED_PLATES = {
-	"Passer domesticus": { file: "HouseSparrow.jpeg", artist: "Watercolour after Audubon & Gould", common: "House Sparrow" },
-	"Turdus merula": { file: "EurasianBlackbird.jpeg", artist: "Watercolour after Audubon & Gould", common: "Eurasian Blackbird" },
-	"Spilopelia chinensis": { file: "SpottedDove.jpeg", artist: "Watercolour after Audubon & Gould", common: "Spotted Dove" },
-	"Rhipidura leucophrys": { file: "WillieWagtail.jpeg", artist: "Watercolour after Audubon & Gould", common: "Willie Wagtail" },
-	"Corvus mellori": { file: "LittleRaven.jpeg", artist: "Watercolour after Audubon & Gould", common: "Little Raven" },
-	"Gymnorhina tibicen": { file: "AustralianMagpie.jpeg", artist: "Watercolour after Audubon & Gould", common: "Australian Magpie" },
-	"Chloris chloris": { file: "EuropeanGreenfinch.jpeg", artist: "Watercolour after Audubon & Gould", common: "European Greenfinch" },
-	"Phylidonyris novaehollandiae": { file: "NewHollandHoneyeater.jpeg", artist: "Watercolour after Audubon & Gould", common: "New Holland Honeyeater" },
-	"Grallina cyanoleuca": { file: "Magpie-lark.jpeg", artist: "Watercolour after Audubon & Gould", common: "Magpie-lark" },
-	"Eolophus roseicapilla": { file: "Galah.jpeg", artist: "Watercolour after Audubon & Gould", common: "Galah" },
-	"Corvus coronoides": { file: "AustralianRaven.jpeg", artist: "Watercolour after Audubon & Gould", common: "Australian Raven" },
-	"Hirundo rustica": { file: "BarnSwallow.jpeg", artist: "Watercolour after Audubon & Gould", common: "Barn Swallow" },
-	"Zosterops lateralis": { file: "Silvereye.jpeg", artist: "Watercolour after Audubon & Gould", common: "Silvereye" },
-	"Haliastur sphenurus": { file: "WhistlingKite.jpeg", artist: "Watercolour after Audubon & Gould", common: "Whistling Kite" },
-	"Manorina melanocephala": { file: "NoisyMiner.jpeg", artist: "Watercolour after Audubon & Gould", common: "Noisy Miner" },
-	"Vanellus miles": { file: "MaskedLapwing.jpeg", artist: "Watercolour after Audubon & Gould", common: "Masked Lapwing" },
-	"Ptilotula penicillata": { file: "White-plumedHoneyeater.jpeg", artist: "Watercolour after Audubon & Gould", common: "White-plumedHoneyeater" },
-	"Sturnus vulgaris": { file: "CommonStarling.jpeg", artist: "Watercolour after Audubon & Gould", common: "Common Starling" },
-	"Ninox boobook": { file: "SouthernBoobook.jpeg", artist: "Watercolour after Audubon & Gould", common: "Southern Boobook" },
-	"Carduelis carduelis": { file: "EuropeanGoldfinch.jpeg", artist: "Watercolour after Audubon & Gould", common: "European Goldfinch" },
-	"Manorina flavigula": { file: "Yellow-throatedMiner.jpeg", artist: "Watercolour after Audubon & Gould", common: "Yellow-throatedMiner" },
-	"Ocyphaps lophotes": { file: "CrestedPigeon.jpeg", artist: "Watercolour after Audubon & Gould", common: "Crested Pigeon" },
-	"Coracina novaehollandiae": { file: "Black-facedCuckooshrike.jpeg", artist: "Watercolour after Audubon & Gould", common: "Black-faced Cuckooshrike" },
-	"Alauda arvensis": { file: "EurasianSkylark.jpeg", artist: "Watercolour after Audubon & Gould", common: "Eurasian Skylark" },
-	"Acanthorhynchus tenuirostris": { file: "EasternSpinebill.jpeg", artist: "Watercolour after Audubon & Gould", common: "Eastern Spinebill" },
-	"Cacatua sanguinea": { file: "LittleCorella.jpeg", artist: "Watercolour after Audubon & Gould", common: "Little Corella" },
-	"Podargus strigoides": { file: "TawnyFrogmouth.jpeg", artist: "Watercolour after Audubon & Gould", common: "Tawny Frogmouth" },
-	"Fulica atra": { file: "EurasianCoot.jpeg", artist: "Watercolour after Audubon & Gould", common: "Eurasian Coot" },
-	"Columba livia": { file: "RockDove.jpeg", artist: "Watercolour after Audubon & Gould", common: "Rock Dove" },
-	"Spilopelia senegalensis": { file: "LaughingDove.jpeg", artist: "Watercolour after Audubon & Gould", common: "Laughing Dove" },
-	"Pachycephala rufiventris": { file: "RufousWhistler.jpeg", artist: "Watercolour after Audubon & Gould", common: "Rufous Whistler" },
-	"Chalcites basalis": { file: "Horsfield'sBronze-Cuckoo.jpeg", artist: "Watercolour after Audubon & Gould", common: "Horsfield's Bronze-Cuckoo" },
-	"Anthochaera carunculata": {
-		file: "Anthochaera carunculata - 1782-1825 - Print - Iconographia Zoologica - Special Collections University of Amsterdam - UBA01 IZ19200045.tif",
-		box: [0.6391,0.2562,0.9484,0.693],
-		artist: "",
-		source: "Iconographia Zoologica (Artis Library)"
-	},
-	"Bubo virginianus": {
-		file: "61 Great Horned Owl.jpg",
-		box: [0.0449,0.1265,0.915,0.8764],
-		artist: "John James Audubon",
-		source: "Audubon, The Birds of America"
-	},
-	"Cacatua galerita": {
-		file: "Edward Lear - Plyctolophus Galeritus. Greater Sulphur-crested Cockatoo. - Google Art Project.jpg",
-		box: [0.0657,0.0644,0.9431,0.9495],
-		artist: "Edward Lear",
-		source: "Lear, Illustrations of the Family of Psittacidae (1832)"
-	},
-	"Cardinalis cardinalis": {
-		file: "159 Cardinal Grosbeak.jpg",
-		box: [0.2967,0.3209,0.7211,0.678],
-		artist: "John James Audubon",
-		source: "Audubon, The Birds of America"
-	},
-	"Chloris chloris": {
-		file: "Emberiza chloris - 1753-1834 - Print - Iconographia Zoologica - Special Collections University of Amsterdam - UBA01 IZA1000262.tif",
-		box: [0.2178,0.2037,0.7593,0.6824],
-		artist: "Isaac van Haastert",
-		source: "Iconographia Zoologica (Artis Library)"
-	},
-	"Columba palumbus": {
-		file: "Keulemans Onze vogels 1 48.jpg",
-		box: [0.0264,0.0449,0.9663,0.8933],
-		artist: "John Gerrard Keulemans",
-		source: "Keulemans, Onze vogels in huis en tuin (1869-76)"
-	},
-	"Corvus brachyrhynchos": {
-		file: "156 American Crow.jpg",
-		box: [0.0631,0.0405,0.939,0.9454],
-		artist: "John James Audubon",
-		source: "Audubon, The Birds of America"
-	},
-	"Corvus corone": {
-		file: "Corvus corone - 1790-1796 - Print - Iconographia Zoologica - Special Collections University of Amsterdam - UBA01 IZ15700215.tif",
-		box: [0.0751,0.1563,0.9463,0.83],
-		artist: "François-Nicolas Martinet",
-		source: "Iconographia Zoologica (Artis Library)"
-	},
-	"Cracticus torquatus": {
-		file: "The birds of Australia (16879357218).jpg",
-		box: [0.052,0.0775,0.9121,0.9186],
-		artist: "Broinowski, Gracius J.",
-		source: "Gould, The Birds of Australia"
-	},
-	"Cyanistes caeruleus": {
-		file: "GouldBirdsEuropeIIIBlue Tit.jpg",
-		box: [0.3002,0.2362,0.6853,0.7232],
-		artist: "J and E Gould  E Lear",
-		source: "Gould, The Birds of Europe"
-	},
-	"Cyanocitta cristata": {
-		file: "102 Blue Jay.jpg",
-		box: [0.1703,0.2368,0.8094,0.79],
-		artist: "John James Audubon",
-		source: "Audubon, The Birds of America"
-	},
-	"Dacelo novaeguineae": {
-		file: "Dacelo gigas - 1820-1863 - Print - Iconographia Zoologica - Special Collections University of Amsterdam - UBA01 IZ16800175.tif",
-		box: [0.2078,0.179,0.775,0.8082],
-		artist: "",
-		source: "Iconographia Zoologica (Artis Library)"
-	},
-	"Dryobates pubescens": {
-		file: "112 Downy Woodpecker.jpg",
-		box: [0.1702,0.1796,0.7657,0.7993],
-		artist: "John James Audubon",
-		source: "Audubon, The Birds of America"
-	},
-	"Erithacus rubecula": {
-		file: "GouldBirdsEuropeIIRobin.jpg",
-		box: [0.2142,0.1952,0.8613,0.7157],
-		artist: "J and E Gould E Lear",
-		source: "Gould, The Birds of Europe"
-	},
-	"Fringilla coelebs": {
-		file: "The birds of Europe (1837) (14749620464).jpg",
-		box: [0.0156,0.0093,0.9834,0.9901],
-		artist: "John Gould    /    Elizabeth Gould    /    Charles Joseph Hullmandel",
-		source: "Gould, The Birds of Europe"
-	},
-	"Gymnorhina tibicen": {
-		file: "The birds of Australia (16880930029).jpg",
-		box: [0.0472,0.092,0.9212,0.8906],
-		artist: "Broinowski, Gracius J.",
-		source: "Gould, The Birds of Australia"
-	},
-	"Junco hyemalis": {
-		file: "13 Snow Bird.jpg",
-		box: [0.3558,0.3129,0.7176,0.6687],
-		artist: "John James Audubon",
-		source: "Audubon, The Birds of America"
-	},
-	"Melospiza melodia": {
-		file: "25 Song Sparrow.jpg",
-		box: [0.3286,0.3215,0.7136,0.6348],
-		artist: "John James Audubon",
-		source: "Audubon, The Birds of America"
-	},
-	"Ninox boobook": {
-		file: "The birds of Australia (16444746064).jpg",
-		box: [0.0259,0.0938,0.8956,0.8922],
-		artist: "Broinowski, Gracius J.",
-		source: "Gould, The Birds of Australia"
-	},
-	"Pardalotus punctatus": {
-		file: "The birds of Australia (17041184346).jpg",
-		box: [0.1383,0.1344,0.8556,0.8439],
-		artist: "Broinowski, Gracius J.",
-		source: "Gould, The Birds of Australia"
-	},
-	"Parus major": {
-		file: "Coloured figures of the birds of the British Islands - issued by Lord Lilford (8291316278).jpg",
-		box: [0.0939,0.0366,0.904,0.9397],
-		artist: "Keulemans, J. G.; Lilford, Thomas Littleton Powys; Newton, Alfred; Salvin, Osbert; Thorburn, Archibald",
-		source: "Lilford, Coloured Figures of the Birds of the British Islands"
-	},
-	"Passer domesticus": {
-		file: "Keulemans Onze vogels 3 50.jpg",
-		box: [0.0586,0.0993,0.9273,0.8909],
-		artist: "John Gerrard Keulemans",
-		source: "Keulemans, Onze vogels in huis en tuin (1869-76)"
-	},
-	"Poecile atricapillus": {
-		file: "160 Black-capped Titmouse.jpg",
-		box: [0.3082,0.3046,0.7262,0.6965],
-		artist: "John James Audubon",
-		source: "Audubon, The Birds of America"
-	},
-	"Strix aluco": {
-		file: "Syrnium Aluco.jpg",
-		box: [0.0369,0.0972,0.9693,0.8739],
-		artist: "John Gould",
-		source: "Gould, The Birds of Europe"
-	},
-	"Trichoglossus moluccanus": {
-		file: "Trichoglossus novae hollandiae - 1796-1808 - Print - Iconographia Zoologica - Special Collections University of Amsterdam - UBA01 IZ18500211.tif",
-		box: [0.0569,0.0903,0.8915,0.8322],
-		artist: "Jacques Barraband",
-		source: "Iconographia Zoologica (Artis Library)"
-	},
-	"Troglodytes troglodytes": {
-		file: "GouldBirdsEuropeIIWren.jpg",
-		box: [0.3784,0.3167,0.7198,0.7318],
-		artist: "J and E Gould E Lear",
-		source: "Gould, The Birds of Europe"
-	},
-	"Turdus merula": {
-		file: "GouldBirdsEuropeIIBlackbird.jpg",
-		box: [0.1479,0.1022,0.9417,0.7669],
-		artist: "J and E Gould E Lear",
-		source: "Gould, The Birds of Europe"
-	},
-	"Turdus migratorius": {
-		file: "131 American Robin.jpg",
-		box: [0.0446,0.0454,0.969,0.9423],
-		artist: "John James Audubon",
-		source: "Audubon, The Birds of America"
-	},
-	"Zenaida macroura": {
-		file: "17 Carolina Turtle Dove.jpg",
-		box: [0.1466,0.1912,0.8679,0.8324],
-		artist: "John James Audubon",
-		source: "Audubon, The Birds of America"
-	},
-};
+const BIRDNET_VETTED_PLATES = {};
 
 const BIRDNET_DEMO_SPECIES = [
 	{
@@ -922,11 +721,21 @@ function getBirdnetCss() {
 			display: flex;
 			flex-direction: column;
 			background-color: var(--wp-birdnet-plate);
+			transition: margin 0.3s ease;
+		}
+		.wp-birdnet-cluster-sheet.offset-left {
+			margin: 0 auto 0 0;
+		}
+		.wp-birdnet-cluster-sheet.offset-right {
+			margin: 0 0 0 auto;
 		}
 		@media (max-aspect-ratio: 1) {
-			.wp-birdnet-cluster-sheet {
+			.wp-birdnet-cluster-sheet,
+			.wp-birdnet-cluster-sheet.offset-left,
+			.wp-birdnet-cluster-sheet.offset-right {
 				max-width: 100%;
 				aspect-ratio: 0.85;
+				margin: 0 auto;
 			}
 		}
 		.wp-birdnet-oval-canvas {
@@ -5153,12 +4962,48 @@ function initWallpanel() {
 			`;
 		}
 
-		renderBirdnetCluster(allSpecies = [], forcePortrait = null) {
+		getBirdnetCardOffset() {
+			const setting = (config.birdnet_card_offset || "auto").toLowerCase();
+			if (setting === "left" || setting === "right" || setting === "none") {
+				return setting;
+			}
+			// "auto" detection
+			const hasCards = (config.cards && config.cards.length > 0) || (config.badges && config.badges.length > 0);
+			if (!hasCards) {
+				return "none";
+			}
+
+			// Check if infoBox or cards have explicit placement or position
+			if (this.infoContainer) {
+				const rect = this.infoContainer.getBoundingClientRect();
+				const winW = window.innerWidth || 1920;
+				if (rect.width > 50) {
+					const midX = rect.left + rect.width / 2;
+					if (midX < winW * 0.45) return "right";
+					if (midX > winW * 0.55) return "left";
+				}
+			}
+
+			if (config.style) {
+				const boxStyle = config.style["wallpanel-screensaver-info-box"] || config.style["wallpanel-screensaver-fixed-info-box"];
+				if (boxStyle) {
+					if (boxStyle.left && !boxStyle.right) return "right";
+					if (boxStyle.right && !boxStyle.left) return "left";
+				}
+			}
+
+			// Default: WallPanel screensaver cards reside on the right flank, offset cluster sheet left
+			return "left";
+		}
+
+		renderBirdnetCluster(allSpecies = [], forcePortrait = null, forceCardOffset = null) {
 			const sorted = allSpecies.slice().sort((a, b) => (b.count || 0) - (a.count || 0));
 			const speciesToShow = sorted.slice(0, Math.min(sorted.length, 12));
 			const total = speciesToShow.length;
 
 			const isPortrait = forcePortrait !== null ? forcePortrait : window.innerHeight > window.innerWidth;
+			const cardOffset = forceCardOffset !== null ? forceCardOffset : (isPortrait ? "none" : this.getBirdnetCardOffset());
+			const offsetClass = cardOffset === "left" ? " offset-left" : cardOffset === "right" ? " offset-right" : "";
 			const slots = getOvalSlots(total, isPortrait);
 
 			const indices = total >= 4 ? [...Array(total - 1).keys()].map(i => i + 1).concat([0]) : [...Array(total).keys()];
@@ -5206,7 +5051,7 @@ function initWallpanel() {
 				<div class="wp-birdnet-mat wp-birdnet-cluster-mat">
 					<div class="wp-birdnet-plate-card wp-birdnet-cluster-card">
 						<div class="wp-birdnet-cluster-inner">
-							<div class="wp-birdnet-cluster-sheet">
+							<div class="wp-birdnet-cluster-sheet${offsetClass}">
 								<div class="wp-birdnet-oval-canvas">
 									${slotsHtml}
 									${labelsHtml}
@@ -5227,7 +5072,7 @@ function initWallpanel() {
 		}
 
 		renderBirdnetSpread(species, allSpecies = [], idx = 0) {
-			const clusterHtml = this.renderBirdnetCluster(allSpecies, false);
+			const clusterHtml = this.renderBirdnetCluster(allSpecies, false, "none");
 			const folioHtml = this.renderBirdnetFolio(species, idx, allSpecies.length);
 
 			return `
